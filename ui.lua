@@ -11433,6 +11433,68 @@ as:CreateTopbarButton("Minimize", "minus", function()
     as:Close()
 end, 999, nil, Color3.fromHex("#f59e0b")) -- 黄色
 
+-- 创建隐藏标签页（设置和统计），并确保对象有效
+local settingsTab = as.Tab({ Title = "Settings", Icon = "settings", ShowTabTitle = true }, {})
+if settingsTab and settingsTab.UIElements and settingsTab.UIElements.Main then
+    settingsTab.UIElements.Main.Parent = nil -- 从侧边栏隐藏
+else
+    warn("Settings tab creation failed, check as.Tab method.")
+end
+local settingsTabIndex = settingsTab and settingsTab.Index
+
+local statsTab = as.Tab({ Title = "Statistics", Icon = "chart-no-axes-column", ShowTabTitle = true }, {})
+if statsTab and statsTab.UIElements and statsTab.UIElements.Main then
+    statsTab.UIElements.Main.Parent = nil
+else
+    warn("Statistics tab creation failed, check as.Tab method.")
+end
+local statsTabIndex = statsTab and statsTab.Index
+
+-- 在设置标签页中添加内容（仅当标签页有效时）
+if settingsTab and type(settingsTab.Slider) == "function" then
+    settingsTab:Slider("UI Scale", {
+        Value = { Min = 0.5, Max = 1.5, Default = as:GetUIScale() },
+        Callback = function(value)
+            as:SetUIScale(tonumber(value))
+        end,
+        IsTextbox = true,
+        Step = 0.05
+    })
+
+    local themes = {}
+    for name, theme in pairs(ar.WindUI.Themes) do
+        table.insert(themes, name)
+    end
+    settingsTab:Dropdown("UI Theme", {
+        Values = themes,
+        Value = ar.WindUI:GetCurrentTheme(),
+        Callback = function(theme)
+            ar.WindUI:SetTheme(theme)
+        end
+    })
+else
+    warn("Settings tab is invalid or missing Slider method.")
+end
+
+if statsTab and type(statsTab.Paragraph) == "function" then
+    statsTab:Paragraph("No statistics available yet.")
+else
+    warn("Statistics tab is invalid or missing Paragraph method.")
+end
+
+-- 替换右上角按钮
+as:CreateTopbarButton("Settings", "settings", function()
+    as.TabModule:SelectTab(settingsTabIndex)
+end, 997, nil, Color3.fromHex("#3b82f6")) -- 蓝色
+
+as:CreateTopbarButton("Statistics", "chart-no-axes-column", function()
+    as.TabModule:SelectTab(statsTabIndex)
+end, 998, nil, Color3.fromHex("#10b981")) -- 绿色
+
+as:CreateTopbarButton("Minimize", "minus", function()
+    as:Close()
+end, 999, nil, Color3.fromHex("#f59e0b")) -- 黄色
+
 local x=0
 local B=0.4
 local C
