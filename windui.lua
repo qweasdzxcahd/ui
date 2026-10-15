@@ -39919,231 +39919,135 @@ end
 
 
 --[[ ================================================================
-     TETRAX v3  ·  基于 WindUI v1.6.66 的重构 / 优化 / 美化
+     TETRAX v8  ·  WindUI v1.6.66 增强层（精简版）
      ----------------------------------------------------------------
-     v3 相对 v2 的关键变化：
-       · 「设置」和「通缉」改为 WindUI 原生 Tab（Tab/Section/Slider/
-         Toggle/Dropdown/Button/Paragraph），不再是自绘浮层
-         —— 外观、动效、圆角与库内其它页面完全一致
-       · 顶栏三个图标变成 Tab 快捷入口：设置 / 通缉 / 缩小
-       · 因此删掉了 v2 的自绘组件库，补丁体量减少约一半，
-         出错面小很多；全部元素由 WindUI 自己的元素模块渲染
-       · 保留并强化：流动渐变边框、Tetrax 深黑主题、OpenButton 描边、
-         标题栏细节、字体/配色/边框的运行时热切换
+     v8 改动：
+       · 去掉窗口自带的 Blur 阴影外圈（深色背景上就是一圈糊黑）
+       · 字体改用 Enum.Font，运行时逐个校验，无效的自动剔除
+       · 代码精简：字体/边框预设压缩成紧凑表，去掉字体缓存层
      ================================================================ ]]
 
 local function __tetrax_patch(aa)
 local __W   = aa
 local __RS  = game:GetService("RunService")
 local __TS  = game:GetService("TweenService")
+local __UIS = game:GetService("UserInputService")
 local __PLR = game:GetService("Players")
+local C     = Color3.fromHex
 
--- =====================  A. 设计令牌 =====================
+-- ====================== 设计令牌 ======================
 local T = {
-	bg         = "#08080A",
-	surface    = "#0E0E12",
-	surface2   = "#131318",
-	card       = "#16161C",
-	cardHover  = "#1D1D24",
-	stroke     = "#25252D",
-	strokeSoft = "#1A1A21",
-	text       = "#FFFFFF",
-	textDim    = "#8C8C98",
-	textFaint  = "#57575F",
-	accent     = "#3AD1C8",
-	accentAlt  = "#1A4B48",
-	danger     = "#FF5A5A",
-	good       = "#5CE07F",
+	bg = "#08080A", surface = "#0E0E12", surface2 = "#131318",
+	card = "#16161C", cardHover = "#1D1D24",
+	stroke = "#25252D", strokeSoft = "#1A1A21",
+	text = "#FFFFFF", textDim = "#8C8C98", textFaint = "#57575F",
+	accent = "#3AD1C8", danger = "#FF5A5A",
 }
 
--- =====================  B. 预设 =====================
--- 边框：seq 首尾同色才能无缝循环流动
-local BORDERS = {
-	{ name = "彩虹",   speed = 1.0, seq = {
-		{0.00,"#FF0040"},{0.16,"#FF8000"},{0.33,"#FFFF00"},
-		{0.50,"#00FF40"},{0.66,"#00C8FF"},{0.83,"#4000FF"},{1.00,"#FF0040"} } },
-	{ name = "幻彩",   speed = 0.6, seq = {
-		{0.00,"#FF0040"},{0.10,"#FF6D00"},{0.20,"#FFD600"},{0.30,"#65FF00"},
-		{0.40,"#00FF9D"},{0.50,"#00E5FF"},{0.60,"#0066FF"},{0.70,"#7C4DFF"},
-		{0.80,"#E040FB"},{0.90,"#FF4081"},{1.00,"#FF0040"} } },
-	{ name = "极光",   speed = 0.8, seq = {
-		{0.00,"#00E5FF"},{0.25,"#2979FF"},{0.50,"#7C4DFF"},{0.75,"#00E5FF"},{1.00,"#00E5FF"} } },
-	{ name = "烈焰",   speed = 1.4, seq = {
-		{0.00,"#FF1744"},{0.30,"#FF6D00"},{0.55,"#FFD600"},{0.80,"#FF6D00"},{1.00,"#FF1744"} } },
-	{ name = "霓虹",   speed = 1.1, seq = {
-		{0.00,"#E040FB"},{0.35,"#FF4081"},{0.70,"#536DFE"},{1.00,"#E040FB"} } },
-	{ name = "薄荷",   speed = 0.7, seq = {
-		{0.00,"#00E676"},{0.35,"#1DE9B6"},{0.70,"#00B8D4"},{1.00,"#00E676"} } },
-	{ name = "黄金",   speed = 1.2, seq = {
-		{0.00,"#FFD700"},{0.35,"#FFAB00"},{0.70,"#FFF59D"},{1.00,"#FFD700"} } },
-	{ name = "紫罗兰", speed = 0.9, seq = {
-		{0.00,"#A855F7"},{0.35,"#6366F1"},{0.70,"#A855F7"},{1.00,"#A855F7"} } },
-	{ name = "深海",   speed = 0.5, seq = {
-		{0.00,"#0A2A43"},{0.35,"#1E88E5"},{0.65,"#00E5FF"},{1.00,"#0A2A43"} } },
-	{ name = "落日",   speed = 0.85, seq = {
-		{0.00,"#FF9800"},{0.30,"#FF5722"},{0.60,"#E91E63"},{0.85,"#9C27B0"},{1.00,"#FF9800"} } },
-	{ name = "森林",   speed = 0.6, seq = {
-		{0.00,"#1B5E20"},{0.40,"#43A047"},{0.70,"#A5D6A7"},{1.00,"#1B5E20"} } },
-	{ name = "玫瑰",   speed = 1.0, seq = {
-		{0.00,"#FF4081"},{0.30,"#FF1744"},{0.60,"#F8BBD0"},{1.00,"#FF4081"} } },
-	{ name = "冰川",   speed = 0.5, seq = {
-		{0.00,"#FFFFFF"},{0.40,"#B3E5FC"},{0.70,"#4FC3F7"},{1.00,"#FFFFFF"} } },
-	{ name = "熔岩",   speed = 1.6, seq = {
-		{0.00,"#3E0000"},{0.35,"#D84315"},{0.65,"#FFAB00"},{1.00,"#3E0000"} } },
-	{ name = "赛博",   speed = 1.3, seq = {
-		{0.00,"#00E5FF"},{0.35,"#FF00E5"},{0.70,"#00E5FF"},{1.00,"#00E5FF"} } },
-	{ name = "毒液",   speed = 1.1, seq = {
-		{0.00,"#AEEA00"},{0.35,"#33691E"},{0.70,"#76FF03"},{1.00,"#AEEA00"} } },
-	{ name = "星空",   speed = 0.45, seq = {
-		{0.00,"#1A237E"},{0.35,"#5E35B1"},{0.70,"#283593"},{1.00,"#1A237E"} } },
-	{ name = "糖果",   speed = 0.95, seq = {
-		{0.00,"#FF80AB"},{0.25,"#FFD54F"},{0.50,"#80DEEA"},{0.75,"#B39DDB"},{1.00,"#FF80AB"} } },
-	{ name = "青铜",   speed = 0.7, seq = {
-		{0.00,"#6D4C41"},{0.35,"#FFC107"},{0.65,"#8D6E63"},{1.00,"#6D4C41"} } },
-	{ name = "电光",   speed = 2.4, seq = {
-		{0.00,"#FFFFFF"},{0.25,"#00B8D4"},{0.50,"#FFFFFF"},{0.75,"#00E5FF"},{1.00,"#FFFFFF"} } },
-	{ name = "血色",   speed = 1.5, seq = {
-		{0.00,"#5C0000"},{0.35,"#D50000"},{0.70,"#FF5252"},{1.00,"#5C0000"} } },
-	{ name = "冰火",   speed = 1.2, seq = {
-		{0.00,"#00B0FF"},{0.30,"#FFFFFF"},{0.55,"#FF6D00"},{0.80,"#FFFFFF"},{1.00,"#00B0FF"} } },
-	{ name = "暗影",   speed = 0.4, seq = {
-		{0.00,"#1C1C22"},{0.40,"#5A5A66"},{0.70,"#2A2A33"},{1.00,"#1C1C22"} } },
-	{ name = "纯白",   speed = 0,   seq = { {0.00,"#FFFFFF"},{1.00,"#FFFFFF"} } },
-	{ name = "静默",   speed = 0,   seq = { {0.00,"#3A3A44"},{1.00,"#3A3A44"} } },
-}
+-- ====================== 边框预设 ======================
+-- { 名称, 速度, "色1,色2,..." } 首尾同色才能无缝循环；速度为 0 即静态
+local BORDERS = {}
+do
+	local raw = {
+		{ "彩虹",   1.0, "FF0040,FF8000,FFFF00,00FF40,00C8FF,4000FF,FF0040" },
+		{ "幻彩",   0.6, "FF0040,FF6D00,FFD600,65FF00,00FF9D,00E5FF,0066FF,7C4DFF,E040FB,FF4081,FF0040" },
+		{ "极光",   0.8, "00E5FF,2979FF,7C4DFF,00E5FF" },
+		{ "烈焰",   1.4, "FF1744,FF6D00,FFD600,FF6D00,FF1744" },
+		{ "霓虹",   1.1, "E040FB,FF4081,536DFE,E040FB" },
+		{ "薄荷",   0.7, "00E676,1DE9B6,00B8D4,00E676" },
+		{ "黄金",   1.2, "FFD700,FFAB00,FFF59D,FFD700" },
+		{ "紫罗兰", 0.9, "A855F7,6366F1,A855F7" },
+		{ "深海",   0.5, "0A2A43,1E88E5,00E5FF,0A2A43" },
+		{ "落日",   0.85, "FF9800,FF5722,E91E63,9C27B0,FF9800" },
+		{ "森林",   0.6, "1B5E20,43A047,A5D6A7,1B5E20" },
+		{ "玫瑰",   1.0, "FF4081,FF1744,F8BBD0,FF4081" },
+		{ "冰川",   0.5, "FFFFFF,B3E5FC,4FC3F7,FFFFFF" },
+		{ "熔岩",   1.6, "3E0000,D84315,FFAB00,3E0000" },
+		{ "赛博",   1.3, "00E5FF,FF00E5,00E5FF" },
+		{ "毒液",   1.1, "AEEA00,33691E,76FF03,AEEA00" },
+		{ "星空",   0.45, "1A237E,5E35B1,283593,1A237E" },
+		{ "糖果",   0.95, "FF80AB,FFD54F,80DEEA,B39DDB,FF80AB" },
+		{ "青铜",   0.7, "6D4C41,FFC107,8D6E63,6D4C41" },
+		{ "电光",   2.4, "FFFFFF,00B8D4,FFFFFF,00E5FF,FFFFFF" },
+		{ "血色",   1.5, "5C0000,D50000,FF5252,5C0000" },
+		{ "冰火",   1.2, "00B0FF,FFFFFF,FF6D00,FFFFFF,00B0FF" },
+		{ "暗影",   0.4, "1C1C22,5A5A66,2A2A33,1C1C22" },
+		{ "纯白",   0.0, "FFFFFF,FFFFFF" },
+		{ "静默",   0.0, "3A3A44,3A3A44" },
+	}
+	for _, b in ipairs(raw) do
+		local hexes = {}
+		for h in string.gmatch(b[3], "[^,]+") do hexes[#hexes + 1] = h end
+		local pts = {}
+		for i, h in ipairs(hexes) do
+			pts[i] = ColorSequenceKeypoint.new((i - 1) / math.max(1, #hexes - 1), C(h))
+		end
+		BORDERS[#BORDERS + 1] = { name = b[1], speed = b[2], seq = ColorSequence.new(pts) }
+	end
+end
 
+-- ====================== 字体预设 ======================
+-- 用 Enum.Font，逐个 pcall 校验，不存在的直接剔除，保证选到就能用
+local FONTS, FONT_BY_NAME = {}, {}
+do
+	local names = {
+		"Gotham", "GothamMedium", "GothamBold", "GothamBlack",
+		"Arial", "ArialBold", "Legacy",
+		"SourceSans", "SourceSansSemibold", "SourceSansBold", "SourceSansLight", "SourceSansItalic",
+		"BuilderSans", "BuilderSansMedium", "BuilderSansBold", "BuilderSansExtraBold",
+		"Roboto", "RobotoCondensed", "RobotoMono", "Code", "Ubuntu", "Nunito",
+		"Oswald", "Sarpanch", "TitilliumWeb", "Jura", "JosefinSans", "Michroma",
+		"Bodoni", "Garamond", "Antique", "Merriweather", "Highway",
+		"SciFi", "Arcade", "Fantasy", "Cartoon", "DenkOne",
+		"AmaticSC", "Bangers", "Creepster", "Fondamento", "FredokaOne",
+		"GrenzeGotisch", "IndieFlower", "Kalam", "LuckiestGuy",
+		"PatrickHand", "PermanentMarker", "SpecialElite",
+	}
+	for _, n in ipairs(names) do
+		local ok, e = pcall(function() return Enum.Font[n] end)
+		if ok and e then
+			local ok2, face = pcall(Font.fromEnum, e)
+			if ok2 and face then
+				local item = { name = n, enum = e, face = face }
+				FONTS[#FONTS + 1] = item
+				FONT_BY_NAME[n] = item
+			end
+		end
+	end
+end
+
+-- ====================== 强调色 ======================
 local ACCENTS = {
-	{ name = "青松", hex = "#3AD1C8" },
-	{ name = "靛蓝", hex = "#6366F1" },
-	{ name = "品红", hex = "#EC4899" },
-	{ name = "翠绿", hex = "#22C55E" },
-	{ name = "琥珀", hex = "#F59E0B" },
-	{ name = "绯红", hex = "#EF4444" },
+	{ name = "青松", hex = "#3AD1C8" }, { name = "靛蓝", hex = "#6366F1" },
+	{ name = "品红", hex = "#EC4899" }, { name = "翠绿", hex = "#22C55E" },
+	{ name = "琥珀", hex = "#F59E0B" }, { name = "绯红", hex = "#EF4444" },
 	{ name = "天青", hex = "#0EA5E9" },
 }
 
--- 字体：以 Roblox 官方字体族为准，找不到的会自动回退到默认字体
-local FONTS = {
-	-- 无衬线 / UI
-	{ name = "Gotham（默认）",     fam = "Gotham" },
-	{ name = "Gotham Bold",        fam = "GothamBold" },
-	{ name = "Gotham Black",       fam = "GothamBlack" },
-	{ name = "Arial",              fam = "Arial" },
-	{ name = "Arimo",              fam = "Arimo" },
-	{ name = "Interstate",         fam = "Interstate" },
-	{ name = "Roboto",             fam = "Roboto" },
-	{ name = "Roboto Condensed",   fam = "RobotoCondensed" },
-	{ name = "Roboto Mono",        fam = "RobotoMono" },
-	{ name = "Roboto Slab",        fam = "RobotoSlab" },
-	{ name = "Lato",               fam = "Lato" },
-	{ name = "Montserrat",         fam = "Montserrat" },
-	{ name = "Nunito",             fam = "Nunito" },
-	{ name = "Nunito Sans",        fam = "NunitoSans" },
-	{ name = "Quicksand",          fam = "Quicksand" },
-	{ name = "Rubik",              fam = "Rubik" },
-	{ name = "Karla",              fam = "Karla" },
-	{ name = "Barlow",             fam = "Barlow" },
-	{ name = "Fira Sans",          fam = "FiraSans" },
-	{ name = "Titillium Web",      fam = "TitilliumWeb" },
-	{ name = "Ubuntu",             fam = "Ubuntu" },
-	{ name = "Cabin",              fam = "Cabin" },
-	{ name = "Source Sans Pro",    fam = "SourceSansPro" },
-	{ name = "Source Sans Black",  fam = "SourceSansProBlack" },
-	{ name = "Source Sans Semi",   fam = "SourceSansProSemibold" },
-	{ name = "Bitter",             fam = "Bitter" },
-	{ name = "Vollkorn",           fam = "Vollkorn" },
-	{ name = "Enriqueta",          fam = "Enriqueta" },
-	{ name = "Ropa Sans",          fam = "RopaSans" },
-	{ name = "Josefin Sans",       fam = "JosefinSans" },
-	{ name = "Jura",               fam = "Jura" },
-	-- 标题 / 展示型
-	{ name = "Oswald",             fam = "Oswald" },
-	{ name = "Bebas Neue",         fam = "BebasNeue" },
-	{ name = "Antique",            fam = "Antique" },
-	{ name = "Garamond",           fam = "Garamond" },
-	{ name = "Palatino",           fam = "Palatino" },
-	{ name = "Lora",               fam = "Lora" },
-	{ name = "Merriweather",       fam = "Merriweather" },
-	{ name = "Libre Baskerville",  fam = "LibreBaskerville" },
-	{ name = "Bodoni Moda",        fam = "BodoniModa" },
-	{ name = "Eczar",              fam = "Eczar" },
-	{ name = "Bellefair",          fam = "Bellefair" },
-	{ name = "Balthazar",          fam = "Balthazar" },
-	{ name = "Gruppo",             fam = "Gruppo" },
-	{ name = "Denk One",           fam = "DenkOne" },
-	{ name = "Hammersmith One",    fam = "HammersmithOne" },
-	{ name = "Michroma",           fam = "Michroma" },
-	{ name = "Unica One",          fam = "UnicaOne" },
-	{ name = "Sarpanch",           fam = "Sarpanch" },
-	{ name = "Yanone Kaffeesatz",  fam = "YanoneKaffeesatz" },
-	-- 花体 / 手写
-	{ name = "Creepster",          fam = "Creepster" },
-	{ name = "Bangers",            fam = "Bangers" },
-	{ name = "Luckiest Guy",       fam = "LuckiestGuy" },
-	{ name = "Fredoka One",        fam = "FredokaOne" },
-	{ name = "Comic Neue",         fam = "ComicNeueAngular" },
-	{ name = "Permanent Marker",   fam = "PermanentMarker" },
-	{ name = "Patrick Hand",       fam = "PatrickHand" },
-	{ name = "Indie Flower",       fam = "IndieFlower" },
-	{ name = "Rock Salt",          fam = "RockSalt" },
-	{ name = "Special Elite",      fam = "SpecialElite" },
-	{ name = "Kalam",              fam = "Kalam" },
-	{ name = "Tillana",            fam = "Tillana" },
-	{ name = "Tangerine",          fam = "Tangerine" },
-	{ name = "Amatic SC",          fam = "AmaticSC" },
-	{ name = "Fondamento",         fam = "Fondamento" },
-	{ name = "Grenze Gotisch",     fam = "GrenzeGotisch" },
-	{ name = "Goudy Bookletter",   fam = "GoudyBookletter1911" },
-	-- 等宽 / 科幻
-	{ name = "Code（等宽）",        fam = "Code" },
-	{ name = "Iosevka",            fam = "Iosevka" },
-	{ name = "Inconsolata",        fam = "Inconsolata" },
-	{ name = "Share Tech Mono",    fam = "ShareTechMono" },
-	{ name = "TeX Gyre Cursor",    fam = "TeXGyreCursor" },
-	{ name = "Sci-Fi",             fam = "SciFi" },
-	{ name = "Zekton",             fam = "Zekton" },
-	{ name = "Neuropol",           fam = "Neuropol" },
-	{ name = "Accanthis",          fam = "AccanthisADFStdNo3" },
-}
-
--- =====================  C. 状态 =====================
+-- ====================== 运行状态 ======================
 local CFG = {
 	dpi = 1, font = "Gotham",
 	border = true, borderStyle = 1, borderThickness = 3, borderSpeed = 1,
-	accent = 1,
+	accent = 1, shadow = false,
 }
 
--- [STATS] 通缉页顶部统计：改 Fields 决定显示哪几项与顺序
+-- [STATS] 通缉页顶部统计。Fields 决定显示哪几项与顺序；
+--         Values 可放 function() return 值 end，用来接管任意 key
 local STATS = {
-	Enabled   = true,
-	Fields    = { "targets", "flagged", "online", "fps", "uptime" },
+	Enabled = true,
+	Fields = { "targets", "flagged", "online", "fps", "uptime" },
 	Separator = "     ·     ",
-	Prefix    = "",
-	Suffix    = "",
+	Prefix = "", Suffix = "",
 	Labels = {
 		targets = "通缉目标", flagged = "已标记", online = "在线",
 		fps = "FPS", uptime = "运行", alive = "存活",
 	},
-	-- 自定义取值函数：{ key = function() return 任意值 end }
-	-- 在脚本里用 WindUI:ConfigureTetrax{ Stats = { Values = {...} } } 补给
-	Values    = {},
-	RefreshMs = 1000,
+	Values = {}, RefreshMs = 1000,
 }
 
-local STATE = {
-	win = nil,
-	borders = {},
-	fontRoots = {},
-	clock = 0,
-	fps = 60,
-	frames = 0,
-	acc = 0,
-	start = tick(),
-}
+local STATE = { borders = {}, clock = 0, fps = 60, frames = 0, acc = 0, start = tick() }
 
--- =====================  D. 工具 =====================
-local function C(hex) return Color3.fromHex(hex) end
-
+-- ====================== 小工具 ======================
 local function mk(cls, props, parent)
 	local o = Instance.new(cls)
 	if props then
@@ -40155,6 +40059,12 @@ local function mk(cls, props, parent)
 	return o
 end
 
+local function tw(obj, time, props, style)
+	__TS:Create(obj, TweenInfo.new(time or 0.15, style or Enum.EasingStyle.Quad), props):Play()
+end
+
+local function clamp(v, a, b) return math.max(a, math.min(b, v)) end
+
 local function strokeOn(inst, color, thickness, transparency)
 	return mk("UIStroke", {
 		Thickness = thickness or 1,
@@ -40164,50 +40074,29 @@ local function strokeOn(inst, color, thickness, transparency)
 	}, inst)
 end
 
-local function seqOf(list)
-	local pts = {}
-	for i, e in ipairs(list) do
-		pts[i] = ColorSequenceKeypoint.new(e[1], C(e[2]))
-	end
-	return ColorSequence.new(pts)
-end
-
-local function tw(obj, time, props, style)
-	__TS:Create(
-		obj,
-		TweenInfo.new(time or 0.15, style or Enum.EasingStyle.Quad),
-		props
-	):Play()
-end
-
-local function clamp(v, a, b) return math.max(a, math.min(b, v)) end
-
--- =====================  E. 边框系统 =====================
--- 单连接驱动；对象销毁自动出表；不可见时跳过
-local function registerBorder(stroke, grad, idx, isOpenBtn)
+-- ====================== 边框系统 ======================
+-- 单个 RenderStepped 统一驱动；对象销毁自动出表；不可见时跳过
+local function regBorder(stroke, grad, idx, isOpenBtn)
 	STATE.borders[#STATE.borders + 1] = {
-		stroke = stroke, grad = grad, idx = idx,
-		isOpenBtn = isOpenBtn or false,
-		speed = (BORDERS[idx] or BORDERS[1]).speed * CFG.borderSpeed,
+		stroke = stroke, grad = grad, idx = idx, isOpenBtn = isOpenBtn or false,
+		speed = BORDERS[idx].speed * CFG.borderSpeed,
 	}
 end
 
 local function refreshBorderSpeeds()
 	for _, b in ipairs(STATE.borders) do
-		b.speed = (BORDERS[b.idx] or BORDERS[1]).speed * CFG.borderSpeed
+		b.speed = BORDERS[b.idx].speed * CFG.borderSpeed
 	end
 end
 
 __RS.RenderStepped:Connect(function(dt)
 	STATE.clock = STATE.clock + dt
-
 	STATE.acc = STATE.acc + dt
 	STATE.frames = STATE.frames + 1
 	if STATE.acc >= 0.5 then
 		STATE.fps = math.floor(STATE.frames / STATE.acc + 0.5)
 		STATE.frames, STATE.acc = 0, 0
 	end
-
 	for i = #STATE.borders, 1, -1 do
 		local b = STATE.borders[i]
 		local g = b.grad
@@ -40219,34 +40108,22 @@ __RS.RenderStepped:Connect(function(dt)
 	end
 end)
 
--- =====================  F. 字体系统（缓存，只遍历一次） =====================
-local function trackFonts(root)
-	local list = {}
-	for _, d in ipairs(root:GetDescendants()) do
+-- ====================== 字体系统 ======================
+-- 切换不频繁，直接全量扫 ScreenGui，不维护缓存表
+local function applyFont(fam)
+	local item = FONT_BY_NAME[fam] or FONTS[1]
+	if not item then return end
+	pcall(function() __W:SetFont(fam) end)
+	for _, d in ipairs(__W.ScreenGui:GetDescendants()) do
 		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-			list[#list + 1] = d
+			local w = Enum.FontWeight.Regular
+			pcall(function() w = d.FontFace.Weight end)
+			pcall(function() d.FontFace = Font.new(item.face.Family, w, item.face.Style) end)
 		end
 	end
-	STATE.fontRoots[#STATE.fontRoots + 1] = { root = root, list = list }
 end
 
-local function applyFont(family)
-	for _, entry in ipairs(STATE.fontRoots) do
-		if entry.root and entry.root.Parent ~= nil then
-			for _, d in ipairs(entry.list) do
-				if d.Parent ~= nil then
-					local w = Enum.FontWeight.Regular
-					pcall(function() w = d.FontFace.Weight end)
-					pcall(function() d.FontFace = Font.new(family, w) end)
-				end
-			end
-		end
-	end
-	-- WindUI 自己注册的字体对象
-	pcall(function() __W:SetFont(family) end)
-end
-
--- =====================  G. 应用函数 =====================
+-- ====================== 应用函数 ======================
 local function applyDPI(v)
 	CFG.dpi = v
 	if __W.UIScaleObj then __W.UIScaleObj.Scale = v end
@@ -40262,13 +40139,13 @@ local function setBordersEnabled(on)
 end
 
 local function applyBorderStyle(i)
+	i = clamp(i, 1, #BORDERS)
 	CFG.borderStyle = i
-	local st = BORDERS[i] or BORDERS[1]
 	for _, b in ipairs(STATE.borders) do
 		if b.grad and b.grad.Parent then
 			b.idx = i
-			b.speed = st.speed * CFG.borderSpeed
-			b.grad.Color = seqOf(st.seq)
+			b.speed = BORDERS[i].speed * CFG.borderSpeed
+			b.grad.Color = BORDERS[i].seq
 		end
 	end
 end
@@ -40285,86 +40162,177 @@ end
 local function applyAccent(i)
 	i = clamp(i, 1, #ACCENTS)
 	CFG.accent = i
-	local hex = ACCENTS[i].hex
-	local c3 = C(hex)
+	local hex, c3 = ACCENTS[i].hex, C(ACCENTS[i].hex)
 	T.accent = hex
-
-	for _, tname in ipairs({ "Dark", "Tetrax" }) do
-		local t = __W.Themes and __W.Themes[tname]
+	for _, n in ipairs({ "Dark", "Tetrax" }) do
+		local t = __W.Themes and __W.Themes[n]
 		if t then
-			t.Toggle = c3
-			t.Slider = c3
-			t.Checkbox = c3
-			t.Primary = c3
+			t.Toggle, t.Slider, t.Checkbox, t.Primary = c3, c3, c3, c3
 		end
 	end
 	pcall(function() __W:SetTheme(__W:GetCurrentTheme()) end)
 end
 
-local function nameOfFam(fam)
-	for _, f in ipairs(FONTS) do if f.fam == fam then return f.name end end
-	return FONTS[1].name
-end
-
-local function names(tbl)
-	local out = {}
-	for i, v in ipairs(tbl) do out[i] = v.name end
-	return out
-end
-
-local function indexOfName(tbl, name)
-	for i, v in ipairs(tbl) do if v.name == name then return i end end
+local function indexOfName(list, name)
+	if type(name) == "number" then return clamp(name, 1, #list) end
+	for i, v in ipairs(list) do if v.name == name then return i end end
 	return 1
 end
 
--- 创建 Tab 并隐藏它在侧边栏的入口（只通过顶栏图标进入）
-local function createHiddenTab(win, cfg)
-	local side = win.UIElements.SideBar
-	local frame = side and side:FindFirstChild("Frame")
+local function names(list)
+	local out = {}
+	for i, v in ipairs(list) do out[i] = v.name end
+	return out
+end
 
+-- 窗口自带的 Blur 阴影：默认关掉（深色背景下就是一圈糊黑）
+local function setShadow(on)
+	CFG.shadow = on and true or false
+	local win = STATE.win
+	local main = win and win.UIElements and win.UIElements.Main
+	local blur = main and main:FindFirstChild("Blur", true)
+	if not blur then return end
+	blur.ImageTransparency = CFG.shadow and 0.6 or 1
+	if not blur:GetAttribute("TetraxShadowHooked") then
+		blur:SetAttribute("TetraxShadowHooked", true)
+		blur:GetPropertyChangedSignal("ImageTransparency"):Connect(function()
+			if not CFG.shadow and blur.ImageTransparency < 1 then
+				blur.ImageTransparency = 1
+			end
+		end)
+	end
+end
+
+-- ====================== 配置 API ======================
+-- 在 CreateWindow 之前调用；已在窗口上时只能改数值类
+function aa.ConfigureTetrax(self, cfg)
+	if type(cfg) ~= "table" then return false end
+
+	local d = cfg.Defaults
+	if type(d) == "table" then
+		if d.DPI then CFG.dpi = clamp(tonumber(d.DPI) or 1, 0.6, 1.6) end
+		if d.Font and FONT_BY_NAME[d.Font] then CFG.font = d.Font end
+		if d.Accent then CFG.accent = indexOfName(ACCENTS, d.Accent) end
+		if d.Border ~= nil then CFG.border = d.Border and true or false end
+		if d.BorderStyle then CFG.borderStyle = indexOfName(BORDERS, d.BorderStyle) end
+		if d.BorderThickness then CFG.borderThickness = clamp(tonumber(d.BorderThickness) or 3, 1, 8) end
+		if d.BorderSpeed then CFG.borderSpeed = math.max(0, tonumber(d.BorderSpeed) or 1) end
+		if d.Shadow ~= nil then CFG.shadow = d.Shadow and true or false end
+	end
+
+	-- 追加预设
+	for _, b in ipairs(cfg.Borders or {}) do
+		if type(b) == "table" and b.name and b.seq then
+			BORDERS[#BORDERS + 1] = { name = b.name, speed = b.speed or 1, seq = b.seq }
+		end
+	end
+	for _, f in ipairs(cfg.Accents or {}) do
+		if type(f) == "table" and f.name and f.hex then ACCENTS[#ACCENTS + 1] = f end
+	end
+	-- Fonts 是白名单：只保留列出的字体（留空 = 全部保留）
+	if type(cfg.Fonts) == "table" and #cfg.Fonts > 0 then
+		local keep = {}
+		for _, f in ipairs(cfg.Fonts) do
+			local nm = type(f) == "string" and f or (type(f) == "table" and (f.name or f.family))
+			if nm then keep[nm] = true end
+		end
+		for i = #FONTS, 1, -1 do
+			if not keep[FONTS[i].name] then table.remove(FONTS, i) end
+		end
+		if #FONTS == 0 then
+			for _, n in ipairs({ "Gotham", "Arial", "Roboto" }) do
+				if FONT_BY_NAME[n] then FONTS[#FONTS + 1] = FONT_BY_NAME[n] end
+			end
+		end
+		if not FONT_BY_NAME[CFG.font] or not keep[CFG.font] then
+			CFG.font = FONTS[1].name
+		end
+	end
+
+	local st = cfg.Stats
+	if type(st) == "table" then
+		if st.Enabled ~= nil then STATS.Enabled = st.Enabled and true or false end
+		if type(st.Fields) == "table" then STATS.Fields = st.Fields end
+		if type(st.Labels) == "table" then
+			for k, v in pairs(st.Labels) do STATS.Labels[k] = v end
+		end
+		if st.Separator ~= nil then STATS.Separator = st.Separator end
+		if st.Prefix ~= nil then STATS.Prefix = st.Prefix end
+		if st.Suffix ~= nil then STATS.Suffix = st.Suffix end
+		if st.RefreshMs then STATS.RefreshMs = st.RefreshMs end
+		if type(st.Values) == "table" then
+			for k, v in pairs(st.Values) do STATS.Values[k] = v end
+		end
+	end
+
+	if type(cfg.Settings) == "table" then STATE.settings = cfg.Settings end
+
+	if type(cfg.Tabs) == "table" then
+		STATE.tabsMeta = STATE.tabsMeta or {}
+		local tm = STATE.tabsMeta
+		for _, k in ipairs({ "SettingsTitle", "SettingsIcon", "SettingsHint", "WantedTitle", "WantedIcon" }) do
+			if cfg.Tabs[k] then tm[k] = cfg.Tabs[k] end
+		end
+		if cfg.Tabs.ShowSettings ~= nil then tm.ShowSettings = cfg.Tabs.ShowSettings and true or false end
+		if cfg.Tabs.ShowWanted ~= nil then tm.ShowWanted = cfg.Tabs.ShowWanted and true or false end
+	end
+
+	if STATE.win then
+		warn("[Tetrax] ConfigureTetrax 在窗口之后调用：数值类改动仍生效，但设置页结构不会重建。")
+	end
+	return true
+end
+
+function aa.GetDefaultTetraxConfig(self)
+	local bn, an, fn = {}, {}, {}
+	for i, b in ipairs(BORDERS) do bn[i] = b.name end
+	for i, a in ipairs(ACCENTS) do an[i] = a.name end
+	for i, f in ipairs(FONTS) do fn[i] = f.name end
+	return {
+		Defaults = {
+			DPI = CFG.dpi, Font = CFG.font, Accent = ACCENTS[CFG.accent].name,
+			Border = CFG.border, BorderStyle = BORDERS[CFG.borderStyle].name,
+			BorderThickness = CFG.borderThickness, BorderSpeed = CFG.borderSpeed,
+		},
+		Borders = bn, Fonts = fn, Accents = an,
+		Stats = {
+			Enabled = STATS.Enabled, Fields = STATS.Fields, Separator = STATS.Separator,
+			Prefix = STATS.Prefix, Suffix = STATS.Suffix,
+			Labels = STATS.Labels, RefreshMs = STATS.RefreshMs, Values = STATS.Values,
+		},
+		Settings = STATE.settings,
+	}
+end
+
+-- 创建 Tab 并隐藏它在侧边栏的入口
+local function hiddenTab(win, cfg)
+	local frame = win.UIElements.SideBar and win.UIElements.SideBar.Frame
 	local before = {}
 	if frame then
 		for _, c in ipairs(frame:GetChildren()) do before[c] = true end
 	end
-
 	local tab = win:Tab(cfg)
-
 	if frame then
 		for _, c in ipairs(frame:GetChildren()) do
-			if not before[c] and c:IsA("GuiObject") then
-				c.Visible = false
-				STATE.hiddenButtons = STATE.hiddenButtons or {}
-				STATE.hiddenButtons[#STATE.hiddenButtons + 1] = c
-			end
+			if not before[c] and c:IsA("GuiObject") then c.Visible = false end
 		end
 	end
 	return tab
 end
 
--- =====================  H. 设置页（按配置表生成） =====================
--- 显示哪些设置项、什么顺序，由 STATE.settings 决定（默认 DEFAULT_SETTINGS），
--- 可在脚本里用 WindUI:ConfigureTetrax{ Settings = {...} } 覆盖
-
+-- ====================== 设置页 ======================
 local DEFAULT_SETTINGS = {
-	"dpi", "font",
-	"accent",
+	"dpi", "font", "accent",
 	{ Element = "Section", Title = "窗口边框" },
-	"border", "borderStyle",
-	"borderThickness", "borderSpeed",
+	"border", "borderStyle", "borderThickness", "borderSpeed",
 	{ Element = "Section", Title = "操作" },
-	"reset", "print",
-	"close",
+	"reset", "print", "close",
 }
 
-local function resetAllSettings()
-	applyDPI(1)
-	setBordersEnabled(true)
-	applyBorderStyle(1)
-	applyBorderThickness(3)
-	CFG.borderSpeed = 1
-	refreshBorderSpeeds()
-	CFG.font = "Gotham"
-	applyFont("Gotham")
+local function resetAll()
+	applyDPI(1); setBordersEnabled(true); applyBorderStyle(1); applyBorderThickness(3)
+	CFG.borderSpeed = 1; refreshBorderSpeeds()
+	CFG.font = FONTS[1].name; applyFont(CFG.font)
 	applyAccent(1)
 	pcall(function()
 		__W:Notify({ Title = "已重置", Content = "所有设置恢复默认", Duration = 3, Icon = "check" })
@@ -40372,122 +40340,65 @@ local function resetAllSettings()
 end
 
 local function buildSettingsTab(win)
-	local tab = createHiddenTab(win, {
-		Title = (STATE.tabsMeta and STATE.tabsMeta.settingsTitle) or "设置",
-		Icon = (STATE.tabsMeta and STATE.tabsMeta.settingsIcon) or "settings",
-		IconThemed = true,
-		ShowTabTitle = true,
+	local tm = STATE.tabsMeta or {}
+	local tab = hiddenTab(win, {
+		Title = tm.SettingsTitle or "设置",
+		Icon = tm.SettingsIcon or "settings",
+		IconThemed = true, ShowTabTitle = true,
 	})
 
-	local builders = {
-		dpi = function(host)
-			host:Slider({
-				Title = "UI 缩放", Desc = "整体界面大小",
-				Value = { Min = 0.60, Max = 1.60, Default = CFG.dpi },
-				Step = 0.05,
-				Callback = function(v) applyDPI(v) end,
-			})
-		end,
-		font = function(host)
-			host:Dropdown({
-				Title = "UI 字体", Desc = "可搜索",
-				SearchBarEnabled = true,
-				Values = names(FONTS),
-				Value = nameOfFam(CFG.font),
-				Callback = function(v)
-					CFG.font = FONTS[indexOfName(FONTS, v)].fam
-					applyFont(CFG.font)
-				end,
-			})
-		end,
-		accent = function(host)
-			host:Dropdown({
-				Title = "强调色", Desc = "开关 / 滑块 / 勾选框",
-				Values = names(ACCENTS),
-				Value = ACCENTS[CFG.accent].name,
-				Callback = function(v) applyAccent(indexOfName(ACCENTS, v)) end,
-			})
-		end,
-		border = function(host)
-			host:Toggle({
-				Title = "开启边框", Value = CFG.border,
-				Callback = function(v) setBordersEnabled(v) end,
-			})
-		end,
-		borderStyle = function(host)
-			host:Dropdown({
-				Title = "边框样式", Desc = "循环流动 · 可搜索",
-				SearchBarEnabled = true,
-				Values = names(BORDERS),
-				Value = BORDERS[CFG.borderStyle].name,
-				Callback = function(v) applyBorderStyle(indexOfName(BORDERS, v)) end,
-			})
-		end,
-		borderThickness = function(host)
-			host:Slider({
-				Title = "边框厚度",
-				Value = { Min = 1, Max = 8, Default = CFG.borderThickness },
-				Step = 1,
-				Callback = function(v) applyBorderThickness(v) end,
-			})
-		end,
-		borderSpeed = function(host)
-			host:Slider({
-				Title = "流动速度",
-				Value = { Min = 0, Max = 3, Default = CFG.borderSpeed },
-				Step = 0.1,
-				Callback = function(v)
-					CFG.borderSpeed = v
-					refreshBorderSpeeds()
-				end,
-			})
-		end,
-		reset = function(host)
-			host:Button({
-				Title = "重置全部", Desc = "恢复出厂值",
-				Icon = "rotate-ccw", IconThemed = true,
-				Callback = resetAllSettings,
-			})
-		end,
-		print = function(host)
-			host:Button({
-				Title = "打印配置", Desc = "输出到控制台",
-				Icon = "terminal", IconThemed = true,
-				Callback = function() aa.PrintTetraxConfig() end,
-			})
-		end,
-		close = function(host)
-			host:Button({
-				Title = "关闭窗口", Desc = "收起为悬浮按钮",
-				Icon = "minus", IconThemed = true,
-				Color = C(T.danger),
-				Callback = function() pcall(function() win:Close() end) end,
-			})
-		end,
+	local B = {
+		dpi = function(h) h:Slider({ Title = "UI 缩放", Desc = "整体界面大小",
+			Value = { Min = 0.6, Max = 1.6, Default = CFG.dpi }, Step = 0.05,
+			Callback = applyDPI }) end,
+		font = function(h) h:Dropdown({ Title = "UI 字体", Desc = "可搜索", SearchBarEnabled = true,
+			Values = names(FONTS), Value = CFG.font,
+			Callback = function(v) CFG.font = v; applyFont(v) end }) end,
+		accent = function(h) h:Dropdown({ Title = "强调色", Desc = "开关 / 滑块",
+			Values = names(ACCENTS), Value = ACCENTS[CFG.accent].name,
+			Callback = function(v) applyAccent(indexOfName(ACCENTS, v)) end }) end,
+		border = function(h) h:Toggle({ Title = "开启边框", Value = CFG.border,
+			Callback = setBordersEnabled }) end,
+		borderStyle = function(h) h:Dropdown({ Title = "边框样式", Desc = "循环流动 · 可搜索",
+			SearchBarEnabled = true, Values = names(BORDERS), Value = BORDERS[CFG.borderStyle].name,
+			Callback = function(v) applyBorderStyle(indexOfName(BORDERS, v)) end }) end,
+		borderThickness = function(h) h:Slider({ Title = "边框厚度",
+			Value = { Min = 1, Max = 8, Default = CFG.borderThickness }, Step = 1,
+			Callback = applyBorderThickness }) end,
+		borderSpeed = function(h) h:Slider({ Title = "流动速度",
+			Value = { Min = 0, Max = 3, Default = CFG.borderSpeed }, Step = 0.1,
+			Callback = function(v) CFG.borderSpeed = v; refreshBorderSpeeds() end }) end,
+		shadow = function(h) h:Toggle({ Title = "窗口阴影", Desc = "外圈柔和阴影", Value = CFG.shadow,
+			Callback = function(v) CFG.shadow = v; setShadow(v) end }) end,
+		reset = function(h) h:Button({ Title = "重置全部", Desc = "恢复出厂值",
+			Icon = "rotate-ccw", IconThemed = true, Callback = resetAll }) end,
+		print = function(h) h:Button({ Title = "打印配置", Desc = "输出到控制台",
+			Icon = "terminal", IconThemed = true, Callback = function() aa.PrintTetraxConfig() end }) end,
+		close = function(h) h:Button({ Title = "关闭窗口", Desc = "收起为悬浮按钮",
+			Icon = "minus", IconThemed = true, Color = C(T.danger),
+			Callback = function() pcall(function() win:Close() end) end }) end,
 	}
-	STATE.settingsBuilders = builders
+	STATE.builders = B
 
-	-- 渲染：内置项两个一队塞进 HStack（横向并排），Section 之类独占一行
+	-- 渲染：内置项两个一队进 HStack（横向并排），Section 之类独占一行
 	local list = STATE.settings or DEFAULT_SETTINGS
-	local pending = {}
-
+	local pend = {}
 	local function flush()
-		if #pending == 0 then return end
-		if #pending == 1 then
-			pending[1](tab)
+		if #pend == 0 then return end
+		if #pend == 1 then
+			pend[1](tab)
 		else
 			local hs = tab:HStack({})
-			for _, fn in ipairs(pending) do fn(hs) end
+			for _, fn in ipairs(pend) do fn(hs) end
 		end
-		pending = {}
+		pend = {}
 	end
 
 	for _, item in ipairs(list) do
 		if type(item) == "string" then
-			local b = builders[item]
-			if b then
-				pending[#pending + 1] = b
-				if #pending >= 2 then flush() end
+			if B[item] then
+				pend[#pend + 1] = B[item]
+				if #pend >= 2 then flush() end
 			end
 		elseif type(item) == "table" and item.Element then
 			local el = item.Element
@@ -40496,8 +40407,8 @@ local function buildSettingsTab(win)
 				tab[el](tab, item)
 			else
 				local it = item
-				pending[#pending + 1] = function(host) host[el](host, it) end
-				if #pending >= 2 then flush() end
+				pend[#pend + 1] = function(h) h[el](h, it) end
+				if #pend >= 2 then flush() end
 			end
 		end
 	end
@@ -40506,43 +40417,26 @@ local function buildSettingsTab(win)
 	tab:Divider()
 	tab:Paragraph({
 		Title = "提示",
-		Desc = (STATE.tabsMeta and STATE.tabsMeta.settingsHint)
-			or "顶栏三个图标分别是：设置、通缉列表、缩小。这一页不在侧边栏显示，只通过顶栏图标进入。",
+		Desc = tm.SettingsHint or "顶栏三个图标分别是：设置、通缉列表、缩小。这一页不在侧边栏显示。",
 	})
-
 	return tab
 end
 
--- =====================  I. 通缉 Tab（原生元素 · 两列） =====================
+-- ====================== 通缉页 ======================
 local function buildWantedTab(win)
-	local tab = createHiddenTab(win, {
-		Title = (STATE.tabsMeta and STATE.tabsMeta.wantedTitle) or "通缉",
-		Icon = (STATE.tabsMeta and STATE.tabsMeta.wantedIcon) or "list",
-		IconThemed = true,
-		ShowTabTitle = true,
+	local tm = STATE.tabsMeta or {}
+	local tab = hiddenTab(win, {
+		Title = tm.WantedTitle or "通缉",
+		Icon = tm.WantedIcon or "list",
+		IconThemed = true, ShowTabTitle = true,
 	})
 
 	local WANTED = {}
 	STATE.wanted = WANTED
 	win.TetraxWanted = WANTED
 
-	local function flagged()
-		local n = 0
-		for _ in pairs(WANTED) do n = n + 1 end
-		return n
-	end
-
-	local function fmtTime(s)
-		s = math.max(0, math.floor(s))
-		local h = math.floor(s / 3600)
-		local m = math.floor((s % 3600) / 60)
-		local ss = s % 60
-		if h > 0 then return string.format("%d:%02d:%02d", h, m, ss) end
-		return string.format("%02d:%02d", m, ss)
-	end
-
 	local function statValue(key)
-		local custom = STATS.Values and STATS.Values[key]
+		local custom = STATS.Values[key]
 		if custom then
 			local ok, v = pcall(custom)
 			return ok and tostring(v) or "!"
@@ -40550,11 +40444,16 @@ local function buildWantedTab(win)
 		if key == "targets" or key == "online" then
 			return #__PLR:GetPlayers()
 		elseif key == "flagged" then
-			return flagged()
+			local n = 0
+			for _ in pairs(WANTED) do n = n + 1 end
+			return n
 		elseif key == "fps" then
 			return math.floor(STATE.fps)
 		elseif key == "uptime" then
-			return fmtTime(tick() - STATE.start)
+			local s = math.max(0, math.floor(tick() - STATE.start))
+			local h, m = math.floor(s / 3600), math.floor((s % 3600) / 60)
+			if h > 0 then return string.format("%d:%02d:%02d", h, m, s % 60) end
+			return string.format("%02d:%02d", m, s % 60)
 		elseif key == "alive" then
 			local n = 0
 			for _, p in ipairs(__PLR:GetPlayers()) do
@@ -40574,35 +40473,30 @@ local function buildWantedTab(win)
 		for _, key in ipairs(STATS.Fields) do
 			parts[#parts + 1] = (STATS.Labels[key] or key) .. "  " .. tostring(statValue(key))
 		end
-		local text = STATS.Prefix .. table.concat(parts, STATS.Separator) .. STATS.Suffix
-		pcall(function() statPara:SetDesc(text) end)
+		pcall(function()
+			statPara:SetDesc(STATS.Prefix .. table.concat(parts, STATS.Separator) .. STATS.Suffix)
+		end)
 	end
 	STATE.refreshStats = refreshStats
 
 	local sec = tab:Section({ Title = "通缉名单", Desc = "开关即标记", Opened = true })
-
 	local rows = {}
+
 	local function rebuild()
 		for _, r in ipairs(rows) do pcall(function() r:Destroy() end) end
 		rows = {}
-
 		local plrs = __PLR:GetPlayers()
 		if #plrs == 0 then
-			rows[#rows + 1] = sec:Paragraph({
-				Title = "房间里暂时没有玩家",
-				Desc = "有玩家加入会自动刷新",
-			})
+			rows[1] = sec:Paragraph({ Title = "房间里暂时没有玩家", Desc = "有玩家加入会自动刷新" })
 		else
-			-- 两列排布，玩家多时更紧凑
 			local i = 0
 			while i < #plrs do
 				local line = sec:HStack({})
 				for k = 1, 2 do
 					local p = plrs[i + k]
 					if p then
-						local you = (p == __PLR.LocalPlayer) and "（你）" or ""
 						line:Toggle({
-							Title = p.Name .. you,
+							Title = p.Name .. ((p == __PLR.LocalPlayer) and "（你）" or ""),
 							Desc = "UserId " .. tostring(p.UserId),
 							Value = WANTED[p.Name] and true or false,
 							Callback = function(on)
@@ -40621,14 +40515,11 @@ local function buildWantedTab(win)
 
 	rebuild()
 
-	__PLR.PlayerAdded:Connect(function()
-		if tab.Selected then task.spawn(rebuild) end
-	end)
+	__PLR.PlayerAdded:Connect(function() if tab.Selected then task.spawn(rebuild) end end)
 	__PLR.PlayerRemoving:Connect(function(p)
 		WANTED[p.Name] = nil
 		if tab.Selected then task.spawn(rebuild) end
 	end)
-
 	task.spawn(function()
 		while true do
 			task.wait(math.max(0.2, (STATS.RefreshMs or 1000) / 1000))
@@ -40639,488 +40530,234 @@ local function buildWantedTab(win)
 	tab:Divider()
 	tab:Paragraph({
 		Title = "说明",
-		Desc = "标记结果保存在 WindUI:GetWantedList()，形如 { [玩家名] = true }，可在脚本里直接读取。",
+		Desc = "标记结果可以用 WindUI:GetWantedList() 读，形如 { [玩家名] = true }。",
 	})
-
 	return tab
 end
 
--- =====================  J. 标题栏 / OpenButton 美化 =====================
-local function beautifyTopbar(win)
-	local main = win.UIElements.Main:FindFirstChild("Main")
-	local topbar = main and main:FindFirstChild("Topbar")
-	if not topbar then return end
+-- ====================== 标题栏 / OpenButton ======================
+local function beautify(win)
+	local main = win.UIElements.Main
+	local inner = main:FindFirstChild("Main")
+	local topbar = inner and inner:FindFirstChild("Topbar")
+	if topbar then
+		mk("Frame", {
+			Size = UDim2.new(1, -24, 0, 1), Position = UDim2.new(0, 12, 1, -1),
+			BackgroundColor3 = C(T.strokeSoft), BackgroundTransparency = 0.35,
+			BorderSizePixel = 0, ZIndex = 96,
+		}, topbar)
+		for _, d in ipairs(topbar:GetDescendants()) do
+			if d:IsA("TextLabel") then
+				if d.TextSize >= 16 then
+					local item = FONT_BY_NAME[CFG.font] or FONTS[1]
+					pcall(function() d.FontFace = Font.new(item.face.Family, Enum.FontWeight.Bold, item.face.Style) end)
+				else
+					pcall(function() d.TextColor3 = C(T.textFaint) end)
+				end
+			end
+		end
+	end
 
-	mk("Frame", {
-		Size = UDim2.new(1, -24, 0, 1),
-		Position = UDim2.new(0, 12, 1, -1),
-		BackgroundColor3 = C(T.strokeSoft),
-		BackgroundTransparency = 0.35,
-		BorderSizePixel = 0,
-		ZIndex = 96,
-	}, topbar)
-
-	for _, d in ipairs(topbar:GetDescendants()) do
-		if d:IsA("TextLabel") then
-			if d.TextSize >= 16 then
-				pcall(function() d.FontFace = Font.new(CFG.font, Enum.FontWeight.Bold) end)
-			else
-				pcall(function() d.TextColor3 = C(T.textFaint) end)
+	local ob = win.OpenButtonMain
+	if ob and ob.Button then
+		pcall(function()
+			win:EditOpenButton({
+				Title = "tetrax v8",
+				Color = BORDERS[CFG.borderStyle].seq,
+				CornerRadius = UDim.new(1, 0),
+				StrokeThickness = 2,
+			})
+		end)
+		for _, d in ipairs(ob.Button:GetDescendants()) do
+			if d:IsA("UIStroke") then
+				local g = d:FindFirstChildOfClass("UIGradient")
+				if g then regBorder(d, g, CFG.borderStyle, true) end
 			end
 		end
 	end
 end
 
-local function beautifyOpenButton(win)
-	local ob = win.OpenButtonMain
-	if not (ob and ob.Button) then return end
-
-	pcall(function()
-		win:EditOpenButton({
-			Title = "tetrax v5",
-			Color = seqOf((BORDERS[CFG.borderStyle] or BORDERS[1]).seq),
-			CornerRadius = UDim.new(1, 0),
-			StrokeThickness = 2,
-		})
-	end)
-
-	for _, d in ipairs(ob.Button:GetDescendants()) do
-		if d:IsA("UIStroke") then
-			local g = d:FindFirstChildOfClass("UIGradient")
-			if g then registerBorder(d, g, CFG.borderStyle, true) end
-		end
-	end
-end
-
--- =====================  K. 窗口增强 =====================
+-- ====================== 窗口增强 ======================
 local function EnhanceWindow(win)
 	if not win or not win.UIElements then return end
 	local main = win.UIElements.Main
-	if not main then return end
-	if not main:FindFirstChild("Main") and not main:WaitForChild("Main", 10) then
-		return
-	end
-
+	if not main or (not main:FindFirstChild("Main") and not main:WaitForChild("Main", 10)) then return end
 	STATE.win = win
 	aa.ActiveWindow = win
-	trackFonts(main)
 
-	-- 1. 移除自带的 全屏 / 关闭 按钮
+	-- 1. 去掉自带的 全屏 / 关闭 按钮
 	local tb = win.TopBarButtons
-	local function kill(order)
+	for _, order in ipairs({ 997, 998, 999 }) do
 		local rec = tb and tb[100 - order]
 		if rec and rec.Object then pcall(function() rec.Object:Destroy() end) end
 		if tb then tb[100 - order] = nil end
 	end
-	kill(997) kill(998) kill(999)
 
-	-- 2. 窗口流动边框
+	-- 2. 阴影
+	setShadow(CFG.shadow)
+
+	-- 3. 流动边框
 	local bs = strokeOn(main, Color3.new(1, 1, 1), CFG.borderThickness, 0)
 	bs.LineJoinMode = Enum.LineJoinMode.Round
 	bs.Enabled = CFG.border
-	local bg = mk("UIGradient", {
-		Color = seqOf((BORDERS[CFG.borderStyle] or BORDERS[1]).seq),
-	}, bs)
-	registerBorder(bs, bg, CFG.borderStyle, false)
+	regBorder(bs, mk("UIGradient", { Color = BORDERS[CFG.borderStyle].seq }, bs), CFG.borderStyle, false)
 
-	-- 3. OpenButton / 标题栏
-	beautifyOpenButton(win)
-	beautifyTopbar(win)
+	-- 4. 标题栏 / OpenButton
+	beautify(win)
 
-	-- 4. 两个隐藏入口的 Tab（可用 ConfigureTetrax 关掉其中一个）
+	-- 5. 两个隐藏 Tab
 	local tm = STATE.tabsMeta or {}
-	local settingsTab = (tm.showSettings ~= false) and buildSettingsTab(win) or nil
-	local wantedTab = (tm.showWanted ~= false) and buildWantedTab(win) or nil
-	STATE.tabs = { settings = settingsTab, wanted = wantedTab }
+	local sTab = (tm.ShowSettings ~= false) and buildSettingsTab(win) or nil
+	local wTab = (tm.ShowWanted ~= false) and buildWantedTab(win) or nil
+	STATE.tabs = { settings = sTab, wanted = wTab }
 
-	-- 5. 顶栏三个图标
-	if settingsTab then
-		win.Topbar:Button({
-			Name = "Settings",
-			Icon = (STATE.tabsMeta and STATE.tabsMeta.settingsIcon) or "settings",
-			LayoutOrder = 997,
-			Callback = function() settingsTab:Select() end,
-		})
+	-- 6. 顶栏三个图标
+	if sTab then
+		win.Topbar:Button({ Name = "Settings", Icon = (tm.SettingsIcon or "settings"),
+			LayoutOrder = 997, Callback = function() sTab:Select() end })
 	end
-	if wantedTab then
-		win.Topbar:Button({
-			Name = "Wanted",
-			Icon = (STATE.tabsMeta and STATE.tabsMeta.wantedIcon) or "list",
-			LayoutOrder = 998,
-			Callback = function() wantedTab:Select() end,
-		})
+	if wTab then
+		win.Topbar:Button({ Name = "Wanted", Icon = (tm.WantedIcon or "list"),
+			LayoutOrder = 998, Callback = function() wTab:Select() end })
 	end
-	win.Topbar:Button({
-		Name = "Minimize", Icon = "minus", LayoutOrder = 999,
-		Callback = function() pcall(function() win:Close() end) end,
-	})
+	win.Topbar:Button({ Name = "Minimize", Icon = "minus", LayoutOrder = 999,
+		Callback = function() pcall(function() win:Close() end) end })
 
-	-- 6. 兼容入口
+	-- 7. 兼容入口
 	win.TetraxTabs = STATE.tabs
 	win.TetraxConfig = CFG
 	win.TetraxStats = STATS
 	win.TetraxBorders = BORDERS
 end
 
--- =====================  L. 主题 =====================
-local function applyTheme()
+-- ====================== 主题 ======================
+do
 	local dk = __W.Themes and __W.Themes.Dark
 	if dk then
-	dk.Accent      = C("#18181B")
-	dk.Dialog      = C("#131318")
-	dk.Outline     = C("#FFFFFF")
-	dk.Text        = C("#FFFFFF")
-	dk.Placeholder = C(T.textDim)
-	dk.Background  = C(T.bg)
-	dk.Button      = C("#3F3F46")
-	dk.Icon        = C("#B4B4BC")
-	dk.Toggle      = C(T.accent)
-	dk.Slider      = C(T.accent)
-	dk.Checkbox    = C(T.accent)
-	dk.Primary     = C(T.accent)
-	dk.SliderIcon  = C(T.textDim)
-	dk.PanelBackground = C("#FFFFFF")
-	dk.PanelBackgroundTransparency = 0.96
-	dk.LabelBackground = C("#000000")
-	dk.LabelBackgroundTransparency = 0.85
-	dk.ElementBackground = C("#1B1B20")
-	dk.ElementBackgroundTransparency = 0
+		dk.Accent = C("#18181B"); dk.Dialog = C("#131318"); dk.Outline = C("#FFFFFF")
+		dk.Text = C("#FFFFFF"); dk.Placeholder = C(T.textDim); dk.Background = C(T.bg)
+		dk.Button = C("#3F3F46"); dk.Icon = C("#B4B4BC")
+		dk.Toggle = C(T.accent); dk.Slider = C(T.accent)
+		dk.Checkbox = C(T.accent); dk.Primary = C(T.accent); dk.SliderIcon = C(T.textDim)
+		dk.PanelBackground = C("#FFFFFF"); dk.PanelBackgroundTransparency = 0.96
+		dk.LabelBackground = C("#000000"); dk.LabelBackgroundTransparency = 0.85
+		dk.ElementBackground = C("#1B1B20"); dk.ElementBackgroundTransparency = 0
+		pcall(function()
+			local t = {}
+			for k, v in pairs(dk) do t[k] = v end
+			t.Name = "Tetrax"
+			__W:AddTheme(t)
+		end)
 	end
-
-	-- 注册一个名为 "Tetrax" 的主题（Dark 的副本），
-	-- 这样 CreateWindow{ Theme = "Tetrax" } 可以直接用
-	pcall(function()
-		local src = __W.Themes and __W.Themes.Dark
-		if not src then return end
-		local t = {}
-		for k, v in pairs(src) do t[k] = v end
-		t.Name = "Tetrax"
-		__W:AddTheme(t)
-	end)
 end
 
-applyTheme()
-
--- =====================  M. 对外 API =====================
--- 注册方式与 WindUI 原生一致：函数挂在 WindUI 表上，冒号调用
---     WindUI:SetBorderStyle("彩虹")
---     WindUI:SetAccentColor(2)
-
--- 归一化：接受名字或索引
-local function resolve(list, v)
-	if type(v) == "number" then return clamp(v, 1, #list) end
-	return indexOfName(list, v)
-end
-
-function aa.SetBorderEnabled(self, value)
-	setBordersEnabled(value and true or false)
-	return CFG.border
-end
-
-function aa.ToggleBorder(self)
-	setBordersEnabled(not CFG.border)
-	return CFG.border
-end
-
-function aa.SetBorderStyle(self, value)
-	applyBorderStyle(resolve(BORDERS, value))
-	return BORDERS[CFG.borderStyle].name
-end
-
-function aa.SetBorderThickness(self, value)
-	applyBorderThickness(math.clamp(tonumber(value) or 3, 1, 8))
-	return CFG.borderThickness
-end
-
-function aa.SetBorderSpeed(self, value)
-	CFG.borderSpeed = math.max(0, tonumber(value) or 1)
-	refreshBorderSpeeds()
-	return CFG.borderSpeed
-end
-
-function aa.SetBorder(self, style, thickness, speed, enabled)
-	if style ~= nil then applyBorderStyle(resolve(BORDERS, style)) end
-	if thickness ~= nil then applyBorderThickness(math.clamp(tonumber(thickness) or 3, 1, 8)) end
-	if speed ~= nil then aa.SetBorderSpeed(self, speed) end
-	if enabled ~= nil then setBordersEnabled(enabled and true or false) end
-	return aa.GetBorder(self)
-end
-
+-- ====================== 对外 API ======================
 function aa.GetBorder(self)
 	return {
-		enabled   = CFG.border,
-		style     = BORDERS[CFG.borderStyle].name,
-		styleIndex = CFG.borderStyle,
-		thickness = CFG.borderThickness,
-		speed     = CFG.borderSpeed,
+		enabled = CFG.border, style = BORDERS[CFG.borderStyle].name,
+		styleIndex = CFG.borderStyle, thickness = CFG.borderThickness, speed = CFG.borderSpeed,
 	}
 end
-
+function aa.SetBorderEnabled(self, v) setBordersEnabled(v and true or false); return CFG.border end
+function aa.ToggleBorder(self) setBordersEnabled(not CFG.border); return CFG.border end
+function aa.SetBorderStyle(self, v) applyBorderStyle(indexOfName(BORDERS, v)); return BORDERS[CFG.borderStyle].name end
+function aa.SetBorderThickness(self, v) applyBorderThickness(clamp(tonumber(v) or 3, 1, 8)); return CFG.borderThickness end
+function aa.SetBorderSpeed(self, v) CFG.borderSpeed = math.max(0, tonumber(v) or 1); refreshBorderSpeeds(); return CFG.borderSpeed end
+function aa.SetBorder(self, s, t, p, e)
+	if s ~= nil then applyBorderStyle(indexOfName(BORDERS, s)) end
+	if t ~= nil then applyBorderThickness(clamp(tonumber(t) or 3, 1, 8)) end
+	if p ~= nil then aa.SetBorderSpeed(self, p) end
+	if e ~= nil then setBordersEnabled(e and true or false) end
+	return aa.GetBorder(self)
+end
 function aa.GetBorderStyles(self)
-	local out = {}
-	for i, b in ipairs(BORDERS) do
-		out[i] = { index = i, name = b.name, speed = b.speed }
-	end
-	return out
+	local o = {}
+	for i, b in ipairs(BORDERS) do o[i] = { index = i, name = b.name, speed = b.speed } end
+	return o
 end
-
-function aa.SetAccentColor(self, value)
-	applyAccent(resolve(ACCENTS, value))
-	return ACCENTS[CFG.accent].name
-end
-
+function aa.SetAccentColor(self, v) applyAccent(indexOfName(ACCENTS, v)); return ACCENTS[CFG.accent].name end
 function aa.GetAccentColors(self)
-	local out = {}
-	for i, a in ipairs(ACCENTS) do
-		out[i] = { index = i, name = a.name, hex = a.hex }
-	end
-	return out
+	local o = {}
+	for i, a in ipairs(ACCENTS) do o[i] = { index = i, name = a.name, hex = a.hex } end
+	return o
 end
-
-function aa.SetDPI(self, value)
-	applyDPI(math.clamp(tonumber(value) or 1, 0.6, 1.6))
-	return CFG.dpi
+function aa.SetDPI(self, v) applyDPI(clamp(tonumber(v) or 1, 0.6, 1.6)); return CFG.dpi end
+function aa.GetDPI(self) return CFG.dpi end
+function aa.SetTetraxFont(self, v)
+	if type(v) == "number" then v = FONTS[clamp(v, 1, #FONTS)].name end
+	if not FONT_BY_NAME[v] then return CFG.font end
+	CFG.font = v; applyFont(v); return v
 end
-
-function aa.GetDPI(self)
-	return CFG.dpi
-end
-
-function aa.SetTetraxFont(self, value)
-	if type(value) == "number" then value = FONTS[clamp(value, 1, #FONTS)].fam end
-	CFG.font = value
-	applyFont(value)
-	return CFG.font
-end
-
 function aa.GetTetraxFonts(self)
-	local out = {}
-	for i, f in ipairs(FONTS) do out[i] = { index = i, name = f.name, family = f.fam } end
-	return out
+	local o = {}
+	for i, f in ipairs(FONTS) do o[i] = { index = i, name = f.name } end
+	return o
 end
-
+function aa.SetWindowShadow(self, v) setShadow(v); return CFG.shadow end
 function aa.GetWantedList(self)
-	local out = {}
-	for k, v in pairs(STATE.wanted or {}) do out[k] = v end
-	return out
+	local o = {}
+	for k, v in pairs(STATE.wanted or {}) do o[k] = v end
+	return o
 end
-
-function aa.IsWanted(self, name)
-	return (STATE.wanted or {})[name] and true or false
-end
-
-function aa.SetWanted(self, name, on)
+function aa.IsWanted(self, n) return (STATE.wanted or {})[n] and true or false end
+function aa.SetWanted(self, n, on)
 	STATE.wanted = STATE.wanted or {}
-	STATE.wanted[name] = on and true or nil
+	STATE.wanted[n] = on and true or nil
 	if STATE.refreshStats then task.spawn(STATE.refreshStats) end
-	return STATE.wanted[name] and true or false
+	return STATE.wanted[n] and true or false
 end
-
 function aa.ClearWanted(self)
 	STATE.wanted = {}
 	if STATE.refreshStats then task.spawn(STATE.refreshStats) end
 end
-
-function aa.OpenSettingsTab(self)
-	if STATE.tabs and STATE.tabs.settings then STATE.tabs.settings:Select() end
-end
-
-function aa.OpenWantedTab(self)
-	if STATE.tabs and STATE.tabs.wanted then STATE.tabs.wanted:Select() end
-end
-
-function aa.MinimizeWindow(self)
-	if aa.ActiveWindow then pcall(function() aa.ActiveWindow:Close() end) end
-end
-
-function aa.GetTetraxConfig(self)
-	return CFG
-end
-
+function aa.OpenSettingsTab(self) if STATE.tabs and STATE.tabs.settings then STATE.tabs.settings:Select() end end
+function aa.OpenWantedTab(self) if STATE.tabs and STATE.tabs.wanted then STATE.tabs.wanted:Select() end end
+function aa.MinimizeWindow(self) if aa.ActiveWindow then pcall(function() aa.ActiveWindow:Close() end) end end
 function aa.PrintTetraxConfig(self)
-	local c = aa.GetBorder(self)
-	print(table.concat({
-		"[Tetrax]",
-		"dpi=" .. tostring(CFG.dpi),
-		"font=" .. CFG.font,
-		"accent=" .. ACCENTS[CFG.accent].name,
-		"border=" .. tostring(c.enabled),
-		"style=" .. c.style,
-		"thickness=" .. tostring(c.thickness),
-		"speed=" .. tostring(c.speed),
-	}, "  |  "))
+	print(("[Tetrax] dpi=%s | font=%s | accent=%s | border=%s %s/%s/%s | shadow=%s"):format(
+		tostring(CFG.dpi), CFG.font, ACCENTS[CFG.accent].name,
+		tostring(CFG.border), BORDERS[CFG.borderStyle].name,
+		tostring(CFG.borderThickness), tostring(CFG.borderSpeed), tostring(CFG.shadow)))
 end
 
--- 一次性配置：请在 CreateWindow 之前调用
-function aa.ConfigureTetrax(self, cfg)
-	if type(cfg) ~= "table" then return false end
+-- 命名空间别名（点调用）
+local NS = { Version = "8.0", ConfigureTetrax = aa.ConfigureTetrax, GetDefaultTetraxConfig = aa.GetDefaultTetraxConfig }
+for _, k in ipairs({
+	"GetBorder", "SetBorder", "SetBorderStyle", "SetBorderThickness", "SetBorderSpeed",
+	"SetBorderEnabled", "ToggleBorder", "GetBorderStyles", "SetAccentColor", "GetAccentColors",
+	"SetDPI", "GetDPI", "SetTetraxFont", "GetTetraxFonts", "SetWindowShadow",
+	"GetWantedList", "SetWanted", "IsWanted", "ClearWanted",
+	"OpenSettingsTab", "OpenWantedTab", "MinimizeWindow", "PrintTetraxConfig",
+}) do NS[k] = aa[k] end
+aa.Tetrax = NS
+__W.__Tetrax = NS
+NS.config = CFG
+NS.stats = STATS
+NS.borders = BORDERS
+NS.fonts = FONTS
+NS.state = STATE
 
-	-- 默认值
-	local d = cfg.Defaults
-	if type(d) == "table" then
-		if d.DPI then CFG.dpi = clamp(tonumber(d.DPI) or 1, 0.6, 1.6) end
-		if d.Font then CFG.font = d.Font end
-		if d.Accent then CFG.accent = resolve(ACCENTS, d.Accent) end
-		if d.Border ~= nil then CFG.border = d.Border and true or false end
-		if d.BorderStyle then CFG.borderStyle = resolve(BORDERS, d.BorderStyle) end
-		if d.BorderThickness then CFG.borderThickness = clamp(tonumber(d.BorderThickness) or 3, 1, 8) end
-		if d.BorderSpeed then CFG.borderSpeed = math.max(0, tonumber(d.BorderSpeed) or 1) end
-	end
-
-	-- 追加预设（name + seq 即可）
-	if type(cfg.Borders) == "table" then
-		for _, b in ipairs(cfg.Borders) do
-			if type(b) == "table" and b.name and b.seq then
-				BORDERS[#BORDERS + 1] = { name = b.name, speed = b.speed or 1, seq = b.seq }
-			end
-		end
-	end
-	if type(cfg.Fonts) == "table" then
-		for _, f in ipairs(cfg.Fonts) do
-			if type(f) == "table" and f.name and f.fam then FONTS[#FONTS + 1] = f end
-		end
-	end
-	if type(cfg.Accents) == "table" then
-		for _, a in ipairs(cfg.Accents) do
-			if type(a) == "table" and a.name and a.hex then ACCENTS[#ACCENTS + 1] = a end
-		end
-	end
-
-	-- 统计
-	local st = cfg.Stats
-	if type(st) == "table" then
-		if st.Enabled ~= nil then STATS.Enabled = st.Enabled and true or false end
-		if type(st.Fields) == "table" then STATS.Fields = st.Fields end
-		if type(st.Labels) == "table" then
-			for k, v in pairs(st.Labels) do STATS.Labels[k] = v end
-		end
-		if st.Separator ~= nil then STATS.Separator = st.Separator end
-		if st.Prefix ~= nil then STATS.Prefix = st.Prefix end
-		if st.Suffix ~= nil then STATS.Suffix = st.Suffix end
-		if st.RefreshMs then STATS.RefreshMs = st.RefreshMs end
-		if type(st.Values) == "table" then
-			STATS.Values = STATS.Values or {}
-			for k, v in pairs(st.Values) do STATS.Values[k] = v end
-		end
-	end
-
-	-- 设置页显示哪些项
-	if type(cfg.Settings) == "table" then STATE.settings = cfg.Settings end
-
-	-- 两个 Tab 的标题 / 图标 / 是否创建
-	if type(cfg.Tabs) == "table" then
-		STATE.tabsMeta = STATE.tabsMeta or {}
-		local tm = STATE.tabsMeta
-		if cfg.Tabs.SettingsTitle then tm.settingsTitle = cfg.Tabs.SettingsTitle end
-		if cfg.Tabs.SettingsIcon then tm.settingsIcon = cfg.Tabs.SettingsIcon end
-		if cfg.Tabs.SettingsHint then tm.settingsHint = cfg.Tabs.SettingsHint end
-		if cfg.Tabs.WantedTitle then tm.wantedTitle = cfg.Tabs.WantedTitle end
-		if cfg.Tabs.WantedIcon then tm.wantedIcon = cfg.Tabs.WantedIcon end
-		if cfg.Tabs.ShowSettings ~= nil then tm.showSettings = cfg.Tabs.ShowSettings and true or false end
-		if cfg.Tabs.ShowWanted ~= nil then tm.showWanted = cfg.Tabs.ShowWanted and true or false end
-	end
-
-	if STATE.win then
-		warn("[Tetrax] ConfigureTetrax 在窗口创建之后调用：数值类改动仍生效，但设置页的结构不会重建。建议放在 CreateWindow 之前。")
-	end
-	return true
-end
-
--- 取一份可编辑的默认配置
-function aa.GetDefaultTetraxConfig(self)
-	local bl, fl, al = {}, {}, {}
-	for i, b in ipairs(BORDERS) do bl[i] = b.name end
-	for i, f in ipairs(FONTS) do fl[i] = f.name end
-	for i, a in ipairs(ACCENTS) do al[i] = a.name end
-
-	return {
-		Defaults = {
-			DPI = CFG.dpi,
-			Font = CFG.font,
-			Accent = ACCENTS[CFG.accent].name,
-			Border = CFG.border,
-			BorderStyle = BORDERS[CFG.borderStyle].name,
-			BorderThickness = CFG.borderThickness,
-			BorderSpeed = CFG.borderSpeed,
-		},
-		Borders = bl,
-		Fonts = fl,
-		Accents = al,
-		Stats = {
-			Enabled = STATS.Enabled,
-			Fields = STATS.Fields,
-			Separator = STATS.Separator,
-			Prefix = STATS.Prefix,
-			Suffix = STATS.Suffix,
-			Labels = STATS.Labels,
-			RefreshMs = STATS.RefreshMs,
-			Values = STATS.Values,
-		},
-		Settings = STATE.settings or DEFAULT_SETTINGS,
-	}
-end
-
-aa.Tetrax = {
-	Version = "5.0",
-	SetBorder = aa.SetBorder,
-	GetBorder = aa.GetBorder,
-	SetBorderStyle = aa.SetBorderStyle,
-	SetBorderThickness = aa.SetBorderThickness,
-	SetBorderSpeed = aa.SetBorderSpeed,
-	SetBorderEnabled = aa.SetBorderEnabled,
-	ToggleBorder = aa.ToggleBorder,
-	GetBorderStyles = aa.GetBorderStyles,
-	SetAccentColor = aa.SetAccentColor,
-	GetAccentColors = aa.GetAccentColors,
-	ConfigureTetrax = aa.ConfigureTetrax,
-	GetDefaultTetraxConfig = aa.GetDefaultTetraxConfig,
-	SetDPI = aa.SetDPI,
-	GetDPI = aa.GetDPI,
-	SetTetraxFont = aa.SetTetraxFont,
-	GetTetraxFonts = aa.GetTetraxFonts,
-	GetWantedList = aa.GetWantedList,
-	SetWanted = aa.SetWanted,
-	IsWanted = aa.IsWanted,
-	ClearWanted = aa.ClearWanted,
-	OpenSettingsTab = aa.OpenSettingsTab,
-	OpenWantedTab = aa.OpenWantedTab,
-	MinimizeWindow = aa.MinimizeWindow,
-	PrintConfig = aa.PrintTetraxConfig,
-}
-
--- =====================  N. HOOK =====================
+-- ====================== HOOK ======================
 local __origCreateWindow = __W.CreateWindow
 
 __W.CreateWindow = function(a, b)
 	local self, cfg
-	if type(a) == "table" and a.CreateWindow then
-		self, cfg = a, b
-	else
-		self, cfg = __W, a
-	end
+	if type(a) == "table" and a.CreateWindow then self, cfg = a, b else self, cfg = __W, a end
 
-	-- 主题名兜底：写错了也不至于整个窗口都建不出来
 	if type(cfg) == "table" and cfg.Theme ~= nil and __W.Themes and not __W.Themes[cfg.Theme] then
 		local list = {}
 		for k in pairs(__W.Themes) do list[#list + 1] = tostring(k) end
-		warn("[Tetrax] 主题 " .. tostring(cfg.Theme) .. " 不存在，已自动改用 Dark。可用主题："
-			.. table.concat(list, " / "))
+		warn("[Tetrax] 主题 " .. tostring(cfg.Theme) .. " 不存在，已改用 Dark。可用：" .. table.concat(list, " / "))
 		cfg.Theme = "Dark"
 	end
 
 	local win = __origCreateWindow(self, cfg)
-
 	task.spawn(function()
 		local ok, err = pcall(EnhanceWindow, win)
 		if not ok then warn("[Tetrax] 增强失败: " .. tostring(err)) end
 	end)
 	return win
 end
-
-__W.__Tetrax = aa.Tetrax
-__W.__Tetrax.config = CFG
-__W.__Tetrax.stats = STATS
-__W.__Tetrax.state = STATE
 
 return __W
 end
