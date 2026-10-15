@@ -40289,12 +40289,14 @@ local function applyAccent(i)
 	local c3 = C(hex)
 	T.accent = hex
 
-	local dk = __W.Themes and __W.Themes.Dark
-	if dk then
-		dk.Toggle = c3
-		dk.Slider = c3
-		dk.Checkbox = c3
-		dk.Primary = c3
+	for _, tname in ipairs({ "Dark", "Tetrax" }) do
+		local t = __W.Themes and __W.Themes[tname]
+		if t then
+			t.Toggle = c3
+			t.Slider = c3
+			t.Checkbox = c3
+			t.Primary = c3
+		end
 	end
 	pcall(function() __W:SetTheme(__W:GetCurrentTheme()) end)
 end
@@ -40763,7 +40765,7 @@ end
 -- =====================  L. 主题 =====================
 local function applyTheme()
 	local dk = __W.Themes and __W.Themes.Dark
-	if not dk then return end
+	if dk then
 	dk.Accent      = C("#18181B")
 	dk.Dialog      = C("#131318")
 	dk.Outline     = C("#FFFFFF")
@@ -40783,6 +40785,18 @@ local function applyTheme()
 	dk.LabelBackgroundTransparency = 0.85
 	dk.ElementBackground = C("#1B1B20")
 	dk.ElementBackgroundTransparency = 0
+	end
+
+	-- 注册一个名为 "Tetrax" 的主题（Dark 的副本），
+	-- 这样 CreateWindow{ Theme = "Tetrax" } 可以直接用
+	pcall(function()
+		local src = __W.Themes and __W.Themes.Dark
+		if not src then return end
+		local t = {}
+		for k, v in pairs(src) do t[k] = v end
+		t.Name = "Tetrax"
+		__W:AddTheme(t)
+	end)
 end
 
 applyTheme()
@@ -41078,12 +41092,24 @@ aa.Tetrax = {
 local __origCreateWindow = __W.CreateWindow
 
 __W.CreateWindow = function(a, b)
-	local win
+	local self, cfg
 	if type(a) == "table" and a.CreateWindow then
-		win = __origCreateWindow(a, b)
+		self, cfg = a, b
 	else
-		win = __origCreateWindow(__W, a)
+		self, cfg = __W, a
 	end
+
+	-- 主题名兜底：写错了也不至于整个窗口都建不出来
+	if type(cfg) == "table" and cfg.Theme ~= nil and __W.Themes and not __W.Themes[cfg.Theme] then
+		local list = {}
+		for k in pairs(__W.Themes) do list[#list + 1] = tostring(k) end
+		warn("[Tetrax] 主题 " .. tostring(cfg.Theme) .. " 不存在，已自动改用 Dark。可用主题："
+			.. table.concat(list, " / "))
+		cfg.Theme = "Dark"
+	end
+
+	local win = __origCreateWindow(self, cfg)
+
 	task.spawn(function()
 		local ok, err = pcall(EnhanceWindow, win)
 		if not ok then warn("[Tetrax] 增强失败: " .. tostring(err)) end
