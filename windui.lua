@@ -39919,212 +39919,322 @@ end
 
 
 --[[ ================================================================
-     TETRAX 增强补丁  for WindUI v1.6.66
+     TETRAX v3  ·  基于 WindUI v1.6.66 的重构 / 优化 / 美化
      ----------------------------------------------------------------
-     改动内容：
-       1. 标题栏右上角三个按钮 -> [设置] [通缉列表] [缩小]
-       2. 齿轮键打开「设置面板」：UI DPI / UI 字体 / 窗口边框(开关+多种流动样式+厚度+流速)
-       3. 列表键打开「通缉列表面板」：含统计栏 + 通缉条目开关
-       4. 全套 Tetrax 深黑配色 + OpenButton 彩虹描边
-       5. 不创建任何 Tab（全部为浮层面板）
-
-     改「统计」内容 -> 搜索本文件里的  [STATS]  标记
-     改默认配色   -> 搜索  [COLORS]
-     改边框预设   -> 搜索  [BORDERS]
+     v3 相对 v2 的关键变化：
+       · 「设置」和「通缉」改为 WindUI 原生 Tab（Tab/Section/Slider/
+         Toggle/Dropdown/Button/Paragraph），不再是自绘浮层
+         —— 外观、动效、圆角与库内其它页面完全一致
+       · 顶栏三个图标变成 Tab 快捷入口：设置 / 通缉 / 缩小
+       · 因此删掉了 v2 的自绘组件库，补丁体量减少约一半，
+         出错面小很多；全部元素由 WindUI 自己的元素模块渲染
+       · 保留并强化：流动渐变边框、Tetrax 深黑主题、OpenButton 描边、
+         标题栏细节、字体/配色/边框的运行时热切换
      ================================================================ ]]
 
 local function __tetrax_patch(aa)
 local __W   = aa
 local __RS  = game:GetService("RunService")
 local __TS  = game:GetService("TweenService")
-local __UIS = game:GetService("UserInputService")
 local __PLR = game:GetService("Players")
-local __STA = game:GetService("Stats")
 
--- ============================ [COLORS] ============================
--- 面板 / 内置控件的配色，全部在这里改
-local CLR = {
-	bg      = Color3.fromHex("0A0A0C"),  -- 窗口底色
-	panel   = Color3.fromHex("0F0F12"),  -- 面板底色
-	row     = Color3.fromHex("17171B"),  -- 行底色
-	rowHov  = Color3.fromHex("212127"),  -- 行悬停
-	track   = Color3.fromHex("26262C"),  -- 滑块轨道
-	text    = Color3.fromHex("FFFFFF"),  -- 主文字
-	sub     = Color3.fromHex("8A8A93"),  -- 次级文字
-	accent  = Color3.fromHex("3AD1C8"),  -- 强调色
-	divider = Color3.fromHex("1E1E23"),  -- 分隔线
+-- =====================  A. 设计令牌 =====================
+local T = {
+	bg         = "#08080A",
+	surface    = "#0E0E12",
+	surface2   = "#131318",
+	card       = "#16161C",
+	cardHover  = "#1D1D24",
+	stroke     = "#25252D",
+	strokeSoft = "#1A1A21",
+	text       = "#FFFFFF",
+	textDim    = "#8C8C98",
+	textFaint  = "#57575F",
+	accent     = "#3AD1C8",
+	accentAlt  = "#1A4B48",
+	danger     = "#FF5A5A",
+	good       = "#5CE07F",
 }
 
--- =========================== [BORDERS] ============================
--- 边框预设。seq 是颜色停靠点 {位置, "#hex"}，首尾同色才能无缝循环流动。
+-- =====================  B. 预设 =====================
+-- 边框：seq 首尾同色才能无缝循环流动
 local BORDERS = {
-	{
-		name = "彩虹",
-		speed = 1,
-		seq = {
-			{0.00, "#FF0040"}, {0.16, "#FF8000"}, {0.33, "#FFFF00"},
-			{0.50, "#00FF40"}, {0.66, "#00C8FF"}, {0.83, "#4000FF"},
-			{1.00, "#FF0040"},
-		},
-	},
-	{
-		name = "极光",
-		speed = 0.8,
-		seq = {
-			{0.00, "#00E5FF"}, {0.25, "#2979FF"}, {0.50, "#7C4DFF"},
-			{0.75, "#00E5FF"}, {1.00, "#00E5FF"},
-		},
-	},
-	{
-		name = "烈焰",
-		speed = 1.4,
-		seq = {
-			{0.00, "#FF1744"}, {0.30, "#FF6D00"}, {0.55, "#FFD600"},
-			{0.80, "#FF6D00"}, {1.00, "#FF1744"},
-		},
-	},
-	{
-		name = "霓虹",
-		speed = 1.1,
-		seq = {
-			{0.00, "#E040FB"}, {0.35, "#FF4081"}, {0.70, "#536DFE"},
-			{1.00, "#E040FB"},
-		},
-	},
-	{
-		name = "薄荷",
-		speed = 0.7,
-		seq = {
-			{0.00, "#00E676"}, {0.35, "#1DE9B6"}, {0.70, "#00B8D4"},
-			{1.00, "#00E676"},
-		},
-	},
-	{
-		name = "黄金",
-		speed = 1.2,
-		seq = {
-			{0.00, "#FFD700"}, {0.35, "#FFAB00"}, {0.70, "#FFF59D"},
-			{1.00, "#FFD700"},
-		},
-	},
-	{
-		name = "纯白",
-		speed = 0,
-		seq = {
-			{0.00, "#FFFFFF"}, {1.00, "#FFFFFF"},
-		},
-	},
+	{ name = "彩虹",   speed = 1.0, seq = {
+		{0.00,"#FF0040"},{0.16,"#FF8000"},{0.33,"#FFFF00"},
+		{0.50,"#00FF40"},{0.66,"#00C8FF"},{0.83,"#4000FF"},{1.00,"#FF0040"} } },
+	{ name = "幻彩",   speed = 0.6, seq = {
+		{0.00,"#FF0040"},{0.10,"#FF6D00"},{0.20,"#FFD600"},{0.30,"#65FF00"},
+		{0.40,"#00FF9D"},{0.50,"#00E5FF"},{0.60,"#0066FF"},{0.70,"#7C4DFF"},
+		{0.80,"#E040FB"},{0.90,"#FF4081"},{1.00,"#FF0040"} } },
+	{ name = "极光",   speed = 0.8, seq = {
+		{0.00,"#00E5FF"},{0.25,"#2979FF"},{0.50,"#7C4DFF"},{0.75,"#00E5FF"},{1.00,"#00E5FF"} } },
+	{ name = "烈焰",   speed = 1.4, seq = {
+		{0.00,"#FF1744"},{0.30,"#FF6D00"},{0.55,"#FFD600"},{0.80,"#FF6D00"},{1.00,"#FF1744"} } },
+	{ name = "霓虹",   speed = 1.1, seq = {
+		{0.00,"#E040FB"},{0.35,"#FF4081"},{0.70,"#536DFE"},{1.00,"#E040FB"} } },
+	{ name = "薄荷",   speed = 0.7, seq = {
+		{0.00,"#00E676"},{0.35,"#1DE9B6"},{0.70,"#00B8D4"},{1.00,"#00E676"} } },
+	{ name = "黄金",   speed = 1.2, seq = {
+		{0.00,"#FFD700"},{0.35,"#FFAB00"},{0.70,"#FFF59D"},{1.00,"#FFD700"} } },
+	{ name = "紫罗兰", speed = 0.9, seq = {
+		{0.00,"#A855F7"},{0.35,"#6366F1"},{0.70,"#A855F7"},{1.00,"#A855F7"} } },
+	{ name = "深海",   speed = 0.5, seq = {
+		{0.00,"#0A2A43"},{0.35,"#1E88E5"},{0.65,"#00E5FF"},{1.00,"#0A2A43"} } },
+	{ name = "落日",   speed = 0.85, seq = {
+		{0.00,"#FF9800"},{0.30,"#FF5722"},{0.60,"#E91E63"},{0.85,"#9C27B0"},{1.00,"#FF9800"} } },
+	{ name = "森林",   speed = 0.6, seq = {
+		{0.00,"#1B5E20"},{0.40,"#43A047"},{0.70,"#A5D6A7"},{1.00,"#1B5E20"} } },
+	{ name = "玫瑰",   speed = 1.0, seq = {
+		{0.00,"#FF4081"},{0.30,"#FF1744"},{0.60,"#F8BBD0"},{1.00,"#FF4081"} } },
+	{ name = "冰川",   speed = 0.5, seq = {
+		{0.00,"#FFFFFF"},{0.40,"#B3E5FC"},{0.70,"#4FC3F7"},{1.00,"#FFFFFF"} } },
+	{ name = "熔岩",   speed = 1.6, seq = {
+		{0.00,"#3E0000"},{0.35,"#D84315"},{0.65,"#FFAB00"},{1.00,"#3E0000"} } },
+	{ name = "赛博",   speed = 1.3, seq = {
+		{0.00,"#00E5FF"},{0.35,"#FF00E5"},{0.70,"#00E5FF"},{1.00,"#00E5FF"} } },
+	{ name = "毒液",   speed = 1.1, seq = {
+		{0.00,"#AEEA00"},{0.35,"#33691E"},{0.70,"#76FF03"},{1.00,"#AEEA00"} } },
+	{ name = "星空",   speed = 0.45, seq = {
+		{0.00,"#1A237E"},{0.35,"#5E35B1"},{0.70,"#283593"},{1.00,"#1A237E"} } },
+	{ name = "糖果",   speed = 0.95, seq = {
+		{0.00,"#FF80AB"},{0.25,"#FFD54F"},{0.50,"#80DEEA"},{0.75,"#B39DDB"},{1.00,"#FF80AB"} } },
+	{ name = "青铜",   speed = 0.7, seq = {
+		{0.00,"#6D4C41"},{0.35,"#FFC107"},{0.65,"#8D6E63"},{1.00,"#6D4C41"} } },
+	{ name = "电光",   speed = 2.4, seq = {
+		{0.00,"#FFFFFF"},{0.25,"#00B8D4"},{0.50,"#FFFFFF"},{0.75,"#00E5FF"},{1.00,"#FFFFFF"} } },
+	{ name = "血色",   speed = 1.5, seq = {
+		{0.00,"#5C0000"},{0.35,"#D50000"},{0.70,"#FF5252"},{1.00,"#5C0000"} } },
+	{ name = "冰火",   speed = 1.2, seq = {
+		{0.00,"#00B0FF"},{0.30,"#FFFFFF"},{0.55,"#FF6D00"},{0.80,"#FFFFFF"},{1.00,"#00B0FF"} } },
+	{ name = "暗影",   speed = 0.4, seq = {
+		{0.00,"#1C1C22"},{0.40,"#5A5A66"},{0.70,"#2A2A33"},{1.00,"#1C1C22"} } },
+	{ name = "纯白",   speed = 0,   seq = { {0.00,"#FFFFFF"},{1.00,"#FFFFFF"} } },
+	{ name = "静默",   speed = 0,   seq = { {0.00,"#3A3A44"},{1.00,"#3A3A44"} } },
 }
 
--- [CONFIG] 出厂默认值（面板里改动是临时的，重启脚本回到这里）
+local ACCENTS = {
+	{ name = "青松", hex = "#3AD1C8" },
+	{ name = "靛蓝", hex = "#6366F1" },
+	{ name = "品红", hex = "#EC4899" },
+	{ name = "翠绿", hex = "#22C55E" },
+	{ name = "琥珀", hex = "#F59E0B" },
+	{ name = "绯红", hex = "#EF4444" },
+	{ name = "天青", hex = "#0EA5E9" },
+}
+
+-- 字体：以 Roblox 官方字体族为准，找不到的会自动回退到默认字体
+local FONTS = {
+	-- 无衬线 / UI
+	{ name = "Gotham（默认）",     fam = "Gotham" },
+	{ name = "Gotham Bold",        fam = "GothamBold" },
+	{ name = "Gotham Black",       fam = "GothamBlack" },
+	{ name = "Arial",              fam = "Arial" },
+	{ name = "Arimo",              fam = "Arimo" },
+	{ name = "Interstate",         fam = "Interstate" },
+	{ name = "Roboto",             fam = "Roboto" },
+	{ name = "Roboto Condensed",   fam = "RobotoCondensed" },
+	{ name = "Roboto Mono",        fam = "RobotoMono" },
+	{ name = "Roboto Slab",        fam = "RobotoSlab" },
+	{ name = "Lato",               fam = "Lato" },
+	{ name = "Montserrat",         fam = "Montserrat" },
+	{ name = "Nunito",             fam = "Nunito" },
+	{ name = "Nunito Sans",        fam = "NunitoSans" },
+	{ name = "Quicksand",          fam = "Quicksand" },
+	{ name = "Rubik",              fam = "Rubik" },
+	{ name = "Karla",              fam = "Karla" },
+	{ name = "Barlow",             fam = "Barlow" },
+	{ name = "Fira Sans",          fam = "FiraSans" },
+	{ name = "Titillium Web",      fam = "TitilliumWeb" },
+	{ name = "Ubuntu",             fam = "Ubuntu" },
+	{ name = "Cabin",              fam = "Cabin" },
+	{ name = "Source Sans Pro",    fam = "SourceSansPro" },
+	{ name = "Source Sans Black",  fam = "SourceSansProBlack" },
+	{ name = "Source Sans Semi",   fam = "SourceSansProSemibold" },
+	{ name = "Bitter",             fam = "Bitter" },
+	{ name = "Vollkorn",           fam = "Vollkorn" },
+	{ name = "Enriqueta",          fam = "Enriqueta" },
+	{ name = "Ropa Sans",          fam = "RopaSans" },
+	{ name = "Josefin Sans",       fam = "JosefinSans" },
+	{ name = "Jura",               fam = "Jura" },
+	-- 标题 / 展示型
+	{ name = "Oswald",             fam = "Oswald" },
+	{ name = "Bebas Neue",         fam = "BebasNeue" },
+	{ name = "Antique",            fam = "Antique" },
+	{ name = "Garamond",           fam = "Garamond" },
+	{ name = "Palatino",           fam = "Palatino" },
+	{ name = "Lora",               fam = "Lora" },
+	{ name = "Merriweather",       fam = "Merriweather" },
+	{ name = "Libre Baskerville",  fam = "LibreBaskerville" },
+	{ name = "Bodoni Moda",        fam = "BodoniModa" },
+	{ name = "Eczar",              fam = "Eczar" },
+	{ name = "Bellefair",          fam = "Bellefair" },
+	{ name = "Balthazar",          fam = "Balthazar" },
+	{ name = "Gruppo",             fam = "Gruppo" },
+	{ name = "Denk One",           fam = "DenkOne" },
+	{ name = "Hammersmith One",    fam = "HammersmithOne" },
+	{ name = "Michroma",           fam = "Michroma" },
+	{ name = "Unica One",          fam = "UnicaOne" },
+	{ name = "Sarpanch",           fam = "Sarpanch" },
+	{ name = "Yanone Kaffeesatz",  fam = "YanoneKaffeesatz" },
+	-- 花体 / 手写
+	{ name = "Creepster",          fam = "Creepster" },
+	{ name = "Bangers",            fam = "Bangers" },
+	{ name = "Luckiest Guy",       fam = "LuckiestGuy" },
+	{ name = "Fredoka One",        fam = "FredokaOne" },
+	{ name = "Comic Neue",         fam = "ComicNeueAngular" },
+	{ name = "Permanent Marker",   fam = "PermanentMarker" },
+	{ name = "Patrick Hand",       fam = "PatrickHand" },
+	{ name = "Indie Flower",       fam = "IndieFlower" },
+	{ name = "Rock Salt",          fam = "RockSalt" },
+	{ name = "Special Elite",      fam = "SpecialElite" },
+	{ name = "Kalam",              fam = "Kalam" },
+	{ name = "Tillana",            fam = "Tillana" },
+	{ name = "Tangerine",          fam = "Tangerine" },
+	{ name = "Amatic SC",          fam = "AmaticSC" },
+	{ name = "Fondamento",         fam = "Fondamento" },
+	{ name = "Grenze Gotisch",     fam = "GrenzeGotisch" },
+	{ name = "Goudy Bookletter",   fam = "GoudyBookletter1911" },
+	-- 等宽 / 科幻
+	{ name = "Code（等宽）",        fam = "Code" },
+	{ name = "Iosevka",            fam = "Iosevka" },
+	{ name = "Inconsolata",        fam = "Inconsolata" },
+	{ name = "Share Tech Mono",    fam = "ShareTechMono" },
+	{ name = "TeX Gyre Cursor",    fam = "TeXGyreCursor" },
+	{ name = "Sci-Fi",             fam = "SciFi" },
+	{ name = "Zekton",             fam = "Zekton" },
+	{ name = "Neuropol",           fam = "Neuropol" },
+	{ name = "Accanthis",          fam = "AccanthisADFStdNo3" },
+}
+
+-- =====================  C. 状态 =====================
 local CFG = {
-	dpi            = 1,     -- UI 缩放
-	font           = "Gotham",
-	border         = true,  -- 是否开启边框
-	borderStyle    = 1,     -- 对应 BORDERS 的下标
-	borderThickness= 3,
-	borderSpeed    = 1,
+	dpi = 1, font = "Gotham",
+	border = true, borderStyle = 1, borderThickness = 3, borderSpeed = 1,
+	accent = 1,
 }
 
--- [STATS] 通缉面板顶部「统计栏」的配置 ---------------------------------
---   Fields 决定显示哪几项、按什么顺序显示；删掉某项就不显示。
---   取值："targets" 通缉目标数 / "flagged" 已标记数 / "online" 在线玩家数
---         / "fps" 帧率 / "uptime" 运行时长 / "alive" 存活数
+-- [STATS] 通缉页顶部统计：改 Fields 决定显示哪几项与顺序
 local STATS = {
-	Enabled = true,
-	Fields  = { "targets", "flagged", "online", "fps" },
-	Separator = "   ·   ",
-	Prefix  = "",
-	Suffix  = "",
-	-- 每一项的显示名（想改名/改成中文，改这里）
+	Enabled   = true,
+	Fields    = { "targets", "flagged", "online", "fps", "uptime" },
+	Separator = "     ·     ",
+	Prefix    = "",
+	Suffix    = "",
 	Labels = {
-		targets = "通缉目标",
-		flagged = "已标记",
-		online  = "在线",
-		fps     = "FPS",
-		uptime  = "运行",
-		alive   = "存活",
+		targets = "通缉目标", flagged = "已标记", online = "在线",
+		fps = "FPS", uptime = "运行", alive = "存活",
 	},
+	-- 自定义取值函数：{ key = function() return 任意值 end }
+	-- 在脚本里用 WindUI:ConfigureTetrax{ Stats = { Values = {...} } } 补给
+	Values    = {},
+	RefreshMs = 1000,
 }
--- ===================================================================
 
--- ============================ 小工具 ============================
-local function mk(class, props, parent)
-	local o = Instance.new(class)
+local STATE = {
+	win = nil,
+	borders = {},
+	fontRoots = {},
+	clock = 0,
+	fps = 60,
+	frames = 0,
+	acc = 0,
+	start = tick(),
+}
+
+-- =====================  D. 工具 =====================
+local function C(hex) return Color3.fromHex(hex) end
+
+local function mk(cls, props, parent)
+	local o = Instance.new(cls)
 	if props then
 		for k, v in pairs(props) do
-			if k ~= "Parent" then
-				pcall(function() o[k] = v end)
-			end
+			if k ~= "Parent" then pcall(function() o[k] = v end) end
 		end
 	end
 	if parent then o.Parent = parent end
 	return o
 end
 
-local function corner(inst, r)
-	return mk("UICorner", { CornerRadius = r or UDim.new(0, 8) }, inst)
+local function strokeOn(inst, color, thickness, transparency)
+	return mk("UIStroke", {
+		Thickness = thickness or 1,
+		Color = color or C(T.stroke),
+		Transparency = transparency or 0,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	}, inst)
 end
 
-local function seqFrom(tbl)
+local function seqOf(list)
 	local pts = {}
-	for i, e in ipairs(tbl) do
-		pts[i] = ColorSequenceKeypoint.new(e[1], Color3.fromHex(e[2]))
+	for i, e in ipairs(list) do
+		pts[i] = ColorSequenceKeypoint.new(e[1], C(e[2]))
 	end
 	return ColorSequence.new(pts)
 end
 
-local function lerp(a, b, t) return a + (b - a) * t end
+local function tw(obj, time, props, style)
+	__TS:Create(
+		obj,
+		TweenInfo.new(time or 0.15, style or Enum.EasingStyle.Quad),
+		props
+	):Play()
+end
+
 local function clamp(v, a, b) return math.max(a, math.min(b, v)) end
 
--- ======================= 流动边框（全局注册表） =======================
-local BORDER_TARGETS = {}   -- { {stroke=, grad=, idx=} }
-local CLOCK = 0
+-- =====================  E. 边框系统 =====================
+-- 单连接驱动；对象销毁自动出表；不可见时跳过
+local function registerBorder(stroke, grad, idx, isOpenBtn)
+	STATE.borders[#STATE.borders + 1] = {
+		stroke = stroke, grad = grad, idx = idx,
+		isOpenBtn = isOpenBtn or false,
+		speed = (BORDERS[idx] or BORDERS[1]).speed * CFG.borderSpeed,
+	}
+end
+
+local function refreshBorderSpeeds()
+	for _, b in ipairs(STATE.borders) do
+		b.speed = (BORDERS[b.idx] or BORDERS[1]).speed * CFG.borderSpeed
+	end
+end
 
 __RS.RenderStepped:Connect(function(dt)
-	CLOCK = CLOCK + dt
-	for i = #BORDER_TARGETS, 1, -1 do
-		local b = BORDER_TARGETS[i]
-		if not (b.grad and b.grad.Parent) then
-			table.remove(BORDER_TARGETS, i)
-		else
-			local st = BORDERS[b.idx] or BORDERS[1]
-			local sp = (st.speed or 1) * CFG.borderSpeed
-			if sp > 0 then
-				b.grad.Offset = Vector2.new((CLOCK * sp * 0.12) % 1, 0)
-			end
+	STATE.clock = STATE.clock + dt
+
+	STATE.acc = STATE.acc + dt
+	STATE.frames = STATE.frames + 1
+	if STATE.acc >= 0.5 then
+		STATE.fps = math.floor(STATE.frames / STATE.acc + 0.5)
+		STATE.frames, STATE.acc = 0, 0
+	end
+
+	for i = #STATE.borders, 1, -1 do
+		local b = STATE.borders[i]
+		local g = b.grad
+		if not (g and g.Parent) then
+			table.remove(STATE.borders, i)
+		elseif b.speed > 0 and b.stroke.Enabled then
+			g.Offset = Vector2.new((STATE.clock * b.speed * 0.12) % 1, 0)
 		end
 	end
 end)
 
-local function attachBorder(root, idx)
-	local stroke = mk("UIStroke", {
-		Thickness = CFG.borderThickness,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		Color = Color3.new(1, 1, 1),
-		Transparency = 0,
-		LineJoinMode = Enum.LineJoinMode.Round,
-		Name = "__TetraxBorder",
-	}, root)
-
-	local grad = mk("UIGradient", {
-		Color = seqFrom((BORDERS[idx] or BORDERS[1]).seq),
-		Rotation = 0,
-		Name = "__TetraxBorderGrad",
-	}, stroke)
-
-	table.insert(BORDER_TARGETS, { stroke = stroke, grad = grad, idx = idx })
-	return stroke, grad
+-- =====================  F. 字体系统（缓存，只遍历一次） =====================
+local function trackFonts(root)
+	local list = {}
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+			list[#list + 1] = d
+		end
+	end
+	STATE.fontRoots[#STATE.fontRoots + 1] = { root = root, list = list }
 end
 
--- ======================= 字体应用（全局） =======================
-local FONT_ROOTS = {}
-
 local function applyFont(family)
-	for _, root in ipairs(FONT_ROOTS) do
-		if root and root.Parent ~= nil then
-			for _, d in ipairs(root:GetDescendants()) do
-				if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+	for _, entry in ipairs(STATE.fontRoots) do
+		if entry.root and entry.root.Parent ~= nil then
+			for _, d in ipairs(entry.list) do
+				if d.Parent ~= nil then
 					local w = Enum.FontWeight.Regular
 					pcall(function() w = d.FontFace.Weight end)
 					pcall(function() d.FontFace = Font.new(family, w) end)
@@ -40132,382 +40242,19 @@ local function applyFont(family)
 			end
 		end
 	end
+	-- WindUI 自己注册的字体对象
+	pcall(function() __W:SetFont(family) end)
 end
 
--- 可选字体列表（面板下拉里的选项）
-local FONTS = {
-	{ name = "Gotham",        fam = "Gotham" },
-	{ name = "Gotham 粗体",    fam = "GothamBold" },
-	{ name = "Arial",         fam = "Arial" },
-	{ name = "Source Sans",   fam = "SourceSansPro" },
-	{ name = "Roboto",        fam = "Roboto" },
-	{ name = "Roboto Mono",   fam = "RobotoMono" },
-	{ name = "Ubuntu",        fam = "Ubuntu" },
-	{ name = "Nunito",        fam = "Nunito" },
-	{ name = "Oswald",        fam = "Oswald" },
-	{ name = "Bangers",       fam = "Bangers" },
-	{ name = "Antique",       fam = "Antique" },
-	{ name = "Sci-Fi",        fam = "SciFi" },
-	{ name = "等宽 Code",      fam = "Code" },
-}
-
--- ======================= 轻量控件工厂（纯原生 Instance） =======================
-local UI = {}
-local fnt = function(w) return Font.new(CFG.font, w or Enum.FontWeight.Medium) end
-
-function UI.text(parent, txt, size, color, weight)
-	return mk("TextLabel", {
-		BackgroundTransparency = 1,
-		Text = txt,
-		TextSize = size or 13,
-		FontFace = fnt(weight),
-		TextColor3 = color or CLR.text,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Center,
-	}, parent)
+-- =====================  G. 应用函数 =====================
+local function applyDPI(v)
+	CFG.dpi = v
+	if __W.UIScaleObj then __W.UIScaleObj.Scale = v end
 end
 
--- 一行：左边标题 + 右边控件容器
-function UI.row(parent, height)
-	local row = mk("Frame", {
-		Size = UDim2.new(1, 0, 0, height or 34),
-		BackgroundColor3 = CLR.row,
-		BackgroundTransparency = 0.35,
-		LayoutOrder = 0,
-	}, parent)
-	corner(row, UDim.new(0, 8))
-	local pad = mk("UIPadding", {
-		PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10),
-	}, row)
-	return row
-end
-
--- 开关
-function UI.toggle(parent, initial, onChange)
-	local on = initial and true or false
-	local holder = mk("TextButton", {
-		Size = UDim2.new(0, 42, 0, 22),
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0),
-		BackgroundColor3 = on and CLR.accent or CLR.track,
-		Text = "", AutoButtonColor = false, BorderSizePixel = 0,
-	}, parent)
-	corner(holder, UDim.new(1, 0))
-	local knob = mk("Frame", {
-		Size = UDim2.new(0, 16, 0, 16),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = on and UDim2.new(1, -11, 0.5, 0) or UDim2.new(0, 11, 0.5, 0),
-		BackgroundColor3 = Color3.fromHex("FFFFFF"), BorderSizePixel = 0,
-	}, holder)
-	corner(knob, UDim.new(1, 0))
-	local function paint(anim)
-		local ti = TweenInfo.new(anim and 0.16 or 0, Enum.EasingStyle.Quad)
-		__TS:Create(holder, ti, { BackgroundColor3 = on and CLR.accent or CLR.track }):Play()
-		__TS:Create(knob, ti, {
-			Position = on and UDim2.new(1, -11, 0.5, 0) or UDim2.new(0, 11, 0.5, 0),
-		}):Play()
-	end
-	holder.MouseButton1Click:Connect(function()
-		on = not on
-		paint(true)
-		if onChange then task.spawn(onChange, on) end
-	end)
-	return holder, function() return on end, function(v) on = v and true or false; paint(true) end
-end
-
--- 滑块
-function UI.slider(parent, min, max, step, initial, fmt, onChange)
-	local holder = mk("Frame", {
-		Size = UDim2.new(0, 150, 0, 22),
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -46, 0.5, 0),
-		BackgroundTransparency = 1,
-	}, parent)
-	local track = mk("Frame", {
-		Size = UDim2.new(1, 0, 0, 4),
-		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0),
-		BackgroundColor3 = CLR.track, BorderSizePixel = 0,
-	}, holder)
-	corner(track, UDim.new(1, 0))
-	local fill = mk("Frame", {
-		Size = UDim2.new(0, 0, 1, 0),
-		BackgroundColor3 = CLR.accent, BorderSizePixel = 0,
-	}, track)
-	corner(fill, UDim.new(1, 0))
-	local knob = mk("Frame", {
-		Size = UDim2.new(0, 13, 0, 13),
-		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 0, 0.5, 0),
-		BackgroundColor3 = Color3.fromHex("FFFFFF"), BorderSizePixel = 0,
-	}, holder)
-	corner(knob, UDim.new(1, 0))
-	local hit = mk("TextButton", {
-		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
-		Text = "", AutoButtonColor = false,
-	}, holder)
-
-	local value = initial
-
-	local function redraw()
-		local rel = (max ~= min) and ((value - min) / (max - min)) or 0
-		rel = clamp(rel, 0, 1)
-		fill.Size = UDim2.new(rel, 0, 1, 0)
-		knob.Position = UDim2.new(rel, 0, 0.5, 0)
-	end
-	redraw()
-
-	local label = UI.text(parent, fmt and fmt(value) or tostring(value), 12, CLR.sub)
-	label.Size = UDim2.new(0, 40, 1, 0)
-	label.TextXAlignment = Enum.TextXAlignment.Right
-	label.Position = UDim2.new(1, -42, 0, 0)
-
-	local dragging = false
-	local function applyFromX(x)
-		local rel = clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
-		local v = min + (max - min) * rel
-		if step and step > 0 then v = math.floor(v / step + 0.5) * step end
-		v = clamp(v, min, max)
-		if v ~= value then
-			value = v
-			redraw()
-			if label then label.Text = fmt and fmt(value) or tostring(value) end
-			if onChange then onChange(value) end
-		end
-	end
-
-	hit.MouseButton1Down:Connect(function() dragging = true; applyFromX(__UIS:GetMouseLocation().X) end)
-	__UIS.InputChanged:Connect(function(i)
-		if not dragging then return end
-		if i.UserInputType == Enum.UserInputType.MouseMovement
-			or i.UserInputType == Enum.UserInputType.Touch then
-			applyFromX(i.Position.X)
-		end
-	end)
-	__UIS.InputEnded:Connect(function(i)
-		if i.UserInputType == Enum.UserInputType.MouseButton1
-			or i.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
-	end)
-
-	return function(v)
-		value = clamp(v, min, max)
-		redraw()
-		if label then label.Text = fmt and fmt(value) or tostring(value) end
-	end, function() return value end
-end
-
--- 下拉（浮层挂在 ScreenGui 上，不受面板滚动裁剪）
-function UI.dropdown(parent, options, initialIdx, onChange, widthPx)
-	local idx = initialIdx or 1
-	local holder = mk("TextButton", {
-		Size = UDim2.new(0, widthPx or 118, 0, 22),
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0),
-		BackgroundColor3 = CLR.track, Text = "", AutoButtonColor = false,
-		BorderSizePixel = 0,
-	}, parent)
-	corner(holder, UDim.new(0, 6))
-	local lbl = UI.text(holder, options[idx] and options[idx].name or "?", 12, CLR.text)
-	lbl.Size = UDim2.new(1, -24, 1, 0)
-	lbl.Position = UDim2.new(0, 9, 0, 0)
-	local arrow = UI.text(holder, "v", 11, CLR.sub)
-	arrow.Size = UDim2.new(0, 14, 1, 0)
-	arrow.Position = UDim2.new(1, -16, 0, 0)
-
-	local open = false
-	local layer, blocker
-
-	local function close()
-		open = false
-		if layer then layer:Destroy(); layer = nil end
-		if blocker then blocker:Destroy(); blocker = nil end
-	end
-
-	holder.MouseButton1Click:Connect(function()
-		if open then close() return end
-		open = true
-
-		blocker = mk("TextButton", {
-			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
-			Text = "", ZIndex = 90000, AutoButtonColor = false,
-		}, __W.ScreenGui)
-		blocker.MouseButton1Click:Connect(close)
-
-		local sc = CFG.dpi
-		local ap, as = holder.AbsolutePosition, holder.AbsoluteSize
-		layer = mk("Frame", {
-			Position = UDim2.new(0, ap.X, 0, ap.Y + as.Y + 3),
-			Size = UDim2.new(0, as.X / sc, 0, (#options * 26) / sc),
-			BackgroundColor3 = CLR.panel,
-			BorderSizePixel = 0, ZIndex = 90001,
-		}, __W.ScreenGui)
-		mk("UIScale", { Scale = sc }, layer)
-		corner(layer, UDim.new(0, 7))
-		local st = mk("UIStroke", { Thickness = 1, Color = CLR.divider, Transparency = 0.3 }, layer)
-		local list = mk("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, layer)
-		mk("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) }, layer)
-
-		for i, opt in ipairs(options) do
-			local b = mk("TextButton", {
-				Size = UDim2.new(1, -8, 0, 24), Position = UDim2.new(0, 4, 0, 0),
-				BackgroundColor3 = (i == idx) and CLR.accent or CLR.row,
-				BackgroundTransparency = (i == idx) and 0.75 or 1,
-				Text = "", AutoButtonColor = false, BorderSizePixel = 0,
-				LayoutOrder = i, ZIndex = 90002,
-			}, layer)
-			corner(b, UDim.new(0, 5))
-			UI.text(b, opt.name, 12, (i == idx) and CLR.accent or CLR.text).Size = UDim2.new(1, -16, 1, 0)
-			b:FindFirstChildOfClass("TextLabel").Position = UDim2.new(0, 8, 0, 0)
-			b.MouseEnter:Connect(function() b.BackgroundTransparency = 0.94 end)
-			b.MouseLeave:Connect(function() b.BackgroundTransparency = (i == idx) and 0.75 or 1 end)
-			b.MouseButton1Click:Connect(function()
-				idx = i
-				lbl.Text = opt.name
-				close()
-				if onChange then task.spawn(onChange, i, opt) end
-			end)
-		end
-	end)
-
-	return function()
-		idx = (idx % #options) + 1
-		lbl.Text = options[idx].name
-		if onChange then task.spawn(onChange, idx, options[idx]) end
-	end, function() return idx end
-end
-
--- 普通按钮
-function UI.button(parent, txt, onClick, layoutOrder)
-	local b = mk("TextButton", {
-		Size = UDim2.new(0, 92, 0, 28),
-		BackgroundColor3 = CLR.row, BackgroundTransparency = 0.25,
-		Text = "", AutoButtonColor = false, BorderSizePixel = 0,
-		LayoutOrder = layoutOrder or 0,
-	}, parent)
-	corner(b, UDim.new(0, 7))
-	UI.text(b, txt, 12, CLR.text).Size = UDim2.new(1, 0, 1, 0)
-	b:FindFirstChildOfClass("TextLabel").TextXAlignment = Enum.TextXAlignment.Center
-	b.MouseEnter:Connect(function() b.BackgroundTransparency = 0 end)
-	b.MouseLeave:Connect(function() b.BackgroundTransparency = 0.25 end)
-	b.MouseButton1Click:Connect(function() if onClick then task.spawn(onClick) end end)
-	return b
-end
-
--- ======================= 浮层外壳（设置面板 / 通缉面板共用） =======================
-local PANELS = {}
-
-local function makeShell(win, title, tag)
-	local main = win.UIElements.Main:FindFirstChild("Main")
-	if not main then return nil end
-	local topH = (win.Topbar and win.Topbar.Height) or 52
-
-	local frame = mk("Frame", {
-		Name = "__Tetrax_" .. tag,
-		Size = UDim2.new(1, 0, 1, -topH),
-		Position = UDim2.new(0, 0, 0, topH),
-		BackgroundColor3 = CLR.panel,
-		BackgroundTransparency = 0.05,
-		BorderSizePixel = 0,
-		ZIndex = 5000,
-		Visible = false,
-	}, main)
-	corner(frame, UDim.new(0, math.max(6, (win.UICorner or 12) - 2)))
-
-	-- 顶部标题条
-	local header = mk("Frame", {
-		Size = UDim2.new(1, 0, 0, 42),
-		BackgroundTransparency = 1,
-		ZIndex = 5001,
-	}, frame)
-	local titleLbl = UI.text(header, title, 15, CLR.text, Enum.FontWeight.Bold)
-	titleLbl.Size = UDim2.new(1, -60, 1, 0)
-	titleLbl.Position = UDim2.new(0, 14, 0, 0)
-	titleLbl.ZIndex = 5002
-
-	-- 标题条左侧强调竖条
-	local accentBar = mk("Frame", {
-		Size = UDim2.new(0, 3, 0, 16),
-		Position = UDim2.new(0, 6, 0.5, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BackgroundColor3 = CLR.accent,
-		BorderSizePixel = 0,
-		ZIndex = 5002,
-	}, header)
-	corner(accentBar, UDim.new(1, 0))
-
-	local closeBtn = mk("TextButton", {
-		Size = UDim2.new(0, 26, 0, 26),
-		Position = UDim2.new(1, -11, 0.5, 0),
-		AnchorPoint = Vector2.new(1, 0.5),
-		BackgroundColor3 = CLR.row,
-		BackgroundTransparency = 0.2,
-		Text = "", AutoButtonColor = false, BorderSizePixel = 0,
-		ZIndex = 5002,
-	}, header)
-	corner(closeBtn, UDim.new(0, 6))
-	local xLbl = UI.text(closeBtn, "x", 13, CLR.text)
-	xLbl.Size = UDim2.new(1, 0, 1, 0)
-	xLbl.TextXAlignment = Enum.TextXAlignment.Center
-
-	local divider = mk("Frame", {
-		Size = UDim2.new(1, -20, 0, 1),
-		Position = UDim2.new(0, 10, 0, 42),
-		BackgroundColor3 = CLR.divider,
-		BorderSizePixel = 0,
-		ZIndex = 5001,
-	}, frame)
-
-	-- 内容滚动区
-	local scroll = mk("ScrollingFrame", {
-		Size = UDim2.new(1, -12, 1, -52),
-		Position = UDim2.new(0, 6, 0, 48),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = 3,
-		ScrollBarImageColor3 = CLR.track,
-		CanvasSize = UDim2.new(0, 0, 0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ZIndex = 5001,
-	}, frame)
-	mk("UIListLayout", {
-		Padding = UDim.new(0, 6),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-	}, scroll)
-	mk("UIPadding", {
-		PaddingRight = UDim.new(0, 6),
-		PaddingBottom = UDim.new(0, 10),
-		PaddingTop = UDim.new(0, 4),
-	}, scroll)
-
-	local shell = {
-		frame = frame,
-		header = header,
-		scroll = scroll,
-		close = closeBtn,
-	}
-	closeBtn.MouseButton1Click:Connect(function() frame.Visible = false end)
-	closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundTransparency = 0 end)
-	closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundTransparency = 0.2 end)
-
-	-- 打开/关闭（互斥）
-	function shell.toggle()
-		local want = not frame.Visible
-		for _, p in pairs(PANELS) do p.frame.Visible = false end
-		frame.Visible = want
-		if want and shell.onShow then task.spawn(shell.onShow) end
-	end
-	return shell
-end
-
-local function sectionLabel(parent, text, order)
-	local l = UI.text(parent, text, 11, CLR.sub, Enum.FontWeight.Bold)
-	l.Size = UDim2.new(1, 0, 0, 20)
-	l.LayoutOrder = order
-	return l
-end
-
--- ======================= 边框 / 字体 应用函数 =======================
 local function setBordersEnabled(on)
 	CFG.border = on
-	for _, b in ipairs(BORDER_TARGETS) do
+	for _, b in ipairs(STATE.borders) do
 		if b.stroke and b.stroke.Parent and not b.isOpenBtn then
 			b.stroke.Enabled = on
 		end
@@ -40517,407 +40264,820 @@ end
 local function applyBorderStyle(i)
 	CFG.borderStyle = i
 	local st = BORDERS[i] or BORDERS[1]
-	for _, b in ipairs(BORDER_TARGETS) do
+	for _, b in ipairs(STATE.borders) do
 		if b.grad and b.grad.Parent then
 			b.idx = i
-			if not b.isOpenBtn then b.grad.Color = seqFrom(st.seq) end
+			b.speed = st.speed * CFG.borderSpeed
+			b.grad.Color = seqOf(st.seq)
 		end
 	end
 end
 
 local function applyBorderThickness(t)
 	CFG.borderThickness = t
-	for _, b in ipairs(BORDER_TARGETS) do
+	for _, b in ipairs(STATE.borders) do
 		if b.stroke and b.stroke.Parent and not b.isOpenBtn then
 			b.stroke.Thickness = t
 		end
 	end
 end
 
-local function applyDPI(v)
-	CFG.dpi = v
-	if __W.UIScaleObj then
-		__TS:Create(__W.UIScaleObj, TweenInfo.new(0.15, Enum.EasingStyle.Quad), { Scale = v }):Play()
+local function applyAccent(i)
+	i = clamp(i, 1, #ACCENTS)
+	CFG.accent = i
+	local hex = ACCENTS[i].hex
+	local c3 = C(hex)
+	T.accent = hex
+
+	local dk = __W.Themes and __W.Themes.Dark
+	if dk then
+		dk.Toggle = c3
+		dk.Slider = c3
+		dk.Checkbox = c3
+		dk.Primary = c3
 	end
+	pcall(function() __W:SetTheme(__W:GetCurrentTheme()) end)
 end
 
--- ======================= 统计（[STATS] 配置驱动） =======================
-local START = tick()
-local FPS = 60
-do
-	local frames, acc = 0, 0
-	__RS.RenderStepped:Connect(function(dt)
-		frames = frames + 1
-		acc = acc + dt
-		if acc >= 0.5 then
-			FPS = math.floor(frames / acc + 0.5)
-			frames = 0
-			acc = 0
-		end
-	end)
+local function nameOfFam(fam)
+	for _, f in ipairs(FONTS) do if f.fam == fam then return f.name end end
+	return FONTS[1].name
 end
 
-local function fmtTime(s)
-	s = math.max(0, math.floor(s))
-	local h = math.floor(s / 3600)
-	local m = math.floor((s % 3600) / 60)
-	local ss = s % 60
-	if h > 0 then return string.format("%d:%02d:%02d", h, m, ss) end
-	return string.format("%02d:%02d", m, ss)
+local function names(tbl)
+	local out = {}
+	for i, v in ipairs(tbl) do out[i] = v.name end
+	return out
 end
 
--- ======================= 设置面板 =======================
-local function buildSettings(win, shell)
-	local order = 0
-	local function nextOrder() order = order + 1; return order end
+local function indexOfName(tbl, name)
+	for i, v in ipairs(tbl) do if v.name == name then return i end end
+	return 1
+end
 
-	local function row(labelText, ctrl)
-		local r = UI.row(shell.scroll, 36)
-		r.LayoutOrder = nextOrder()
-		local t = UI.text(r, labelText, 13, CLR.text)
-		t.Size = UDim2.new(1, -150, 1, 0)
-		t.Position = UDim2.new(0, 0, 0, 0)
-		if ctrl then ctrl(r) end
-		return r
+-- 创建 Tab 并隐藏它在侧边栏的入口（只通过顶栏图标进入）
+local function createHiddenTab(win, cfg)
+	local side = win.UIElements.SideBar
+	local frame = side and side:FindFirstChild("Frame")
+
+	local before = {}
+	if frame then
+		for _, c in ipairs(frame:GetChildren()) do before[c] = true end
 	end
 
-	sectionLabel(shell.scroll, "显示", nextOrder())
+	local tab = win:Tab(cfg)
 
-	-- UI DPI
-	row("UI 缩放（DPI）", function(r)
-		UI.slider(r, 0.60, 1.60, 0.05, CFG.dpi,
-			function(v) return string.format("%.2f", v) end,
-			function(v) applyDPI(v) end)
-	end)
-
-	-- 字体
-	row("UI 字体", function(r)
-		local opts, cur = {}, 1
-		for i, f in ipairs(FONTS) do
-			opts[i] = { name = f.name }
-			if f.fam == CFG.font then cur = i end
+	if frame then
+		for _, c in ipairs(frame:GetChildren()) do
+			if not before[c] and c:IsA("GuiObject") then
+				c.Visible = false
+				STATE.hiddenButtons = STATE.hiddenButtons or {}
+				STATE.hiddenButtons[#STATE.hiddenButtons + 1] = c
+			end
 		end
-		UI.dropdown(r, opts, cur, function(i)
-			CFG.font = FONTS[i].fam
-			pcall(function() __W:SetFont(CFG.font) end)
-			applyFont(CFG.font)
-		end, 132)
-	end)
-
-	sectionLabel(shell.scroll, "窗口边框（全部为流动渐变）", nextOrder())
-
-	-- 边框开关
-	row("开启边框", function(r)
-		UI.toggle(r, CFG.border, function(on) setBordersEnabled(on) end)
-	end)
-
-	-- 边框样式
-	row("边框样式", function(r)
-		local opts = {}
-		for i, b in ipairs(BORDERS) do opts[i] = { name = b.name } end
-		UI.dropdown(r, opts, CFG.borderStyle, function(i) applyBorderStyle(i) end, 132)
-	end)
-
-	-- 厚度
-	row("边框厚度", function(r)
-		UI.slider(r, 1, 8, 1, CFG.borderThickness,
-			function(v) return tostring(math.floor(v)) end,
-			function(v) applyBorderThickness(v) end)
-	end)
-
-	-- 流速
-	row("流动速度", function(r)
-		UI.slider(r, 0, 3, 0.1, CFG.borderSpeed,
-			function(v) return string.format("%.1f", v) end,
-			function(v) CFG.borderSpeed = v end)
-	end)
-
-	sectionLabel(shell.scroll, "其它", nextOrder())
-
-	-- 按钮行
-	local btnRow = mk("Frame", {
-		Size = UDim2.new(1, 0, 0, 32),
-		BackgroundTransparency = 1,
-		LayoutOrder = nextOrder(),
-	}, shell.scroll)
-	mk("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		Padding = UDim.new(0, 8),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-	}, btnRow)
-
-	UI.button(btnRow, "重置全部", function()
-		applyDPI(1)
-		setBordersEnabled(true)
-		applyBorderStyle(1)
-		applyBorderThickness(3)
-		CFG.borderSpeed = 1
-		CFG.font = "Gotham"
-		pcall(function() __W:SetFont("Gotham") end)
-		applyFont("Gotham")
-	end, 1)
-
-	UI.button(btnRow, "关闭窗口", function()
-		pcall(function() win:Close() end)
-	end, 2)
-
-	-- 保存面板根，供字体切换时一并刷新
-	FONT_ROOTS[#FONT_ROOTS + 1] = shell.frame
+	end
+	return tab
 end
 
--- ======================= 通缉列表面板 =======================
-local function buildWanted(win, shell)
-	local WANTED = {}          -- [玩家名] = true
-	local itemRows = {}
-	local order = 0
-	local statLbl, statRow
+-- =====================  H. 设置页（按配置表生成） =====================
+-- 显示哪些设置项、什么顺序，由 STATE.settings 决定（默认 DEFAULT_SETTINGS），
+-- 可在脚本里用 WindUI:ConfigureTetrax{ Settings = {...} } 覆盖
 
-	local function flaggedCount()
+local DEFAULT_SETTINGS = {
+	"dpi", "font",
+	"accent",
+	{ Element = "Section", Title = "窗口边框" },
+	"border", "borderStyle",
+	"borderThickness", "borderSpeed",
+	{ Element = "Section", Title = "操作" },
+	"reset", "print",
+	"close",
+}
+
+local function resetAllSettings()
+	applyDPI(1)
+	setBordersEnabled(true)
+	applyBorderStyle(1)
+	applyBorderThickness(3)
+	CFG.borderSpeed = 1
+	refreshBorderSpeeds()
+	CFG.font = "Gotham"
+	applyFont("Gotham")
+	applyAccent(1)
+	pcall(function()
+		__W:Notify({ Title = "已重置", Content = "所有设置恢复默认", Duration = 3, Icon = "check" })
+	end)
+end
+
+local function buildSettingsTab(win)
+	local tab = createHiddenTab(win, {
+		Title = (STATE.tabsMeta and STATE.tabsMeta.settingsTitle) or "设置",
+		Icon = (STATE.tabsMeta and STATE.tabsMeta.settingsIcon) or "settings",
+		IconThemed = true,
+		ShowTabTitle = true,
+	})
+
+	local builders = {
+		dpi = function(host)
+			host:Slider({
+				Title = "UI 缩放", Desc = "整体界面大小",
+				Value = { Min = 0.60, Max = 1.60, Default = CFG.dpi },
+				Step = 0.05,
+				Callback = function(v) applyDPI(v) end,
+			})
+		end,
+		font = function(host)
+			host:Dropdown({
+				Title = "UI 字体", Desc = "可搜索",
+				SearchBarEnabled = true,
+				Values = names(FONTS),
+				Value = nameOfFam(CFG.font),
+				Callback = function(v)
+					CFG.font = FONTS[indexOfName(FONTS, v)].fam
+					applyFont(CFG.font)
+				end,
+			})
+		end,
+		accent = function(host)
+			host:Dropdown({
+				Title = "强调色", Desc = "开关 / 滑块 / 勾选框",
+				Values = names(ACCENTS),
+				Value = ACCENTS[CFG.accent].name,
+				Callback = function(v) applyAccent(indexOfName(ACCENTS, v)) end,
+			})
+		end,
+		border = function(host)
+			host:Toggle({
+				Title = "开启边框", Value = CFG.border,
+				Callback = function(v) setBordersEnabled(v) end,
+			})
+		end,
+		borderStyle = function(host)
+			host:Dropdown({
+				Title = "边框样式", Desc = "循环流动 · 可搜索",
+				SearchBarEnabled = true,
+				Values = names(BORDERS),
+				Value = BORDERS[CFG.borderStyle].name,
+				Callback = function(v) applyBorderStyle(indexOfName(BORDERS, v)) end,
+			})
+		end,
+		borderThickness = function(host)
+			host:Slider({
+				Title = "边框厚度",
+				Value = { Min = 1, Max = 8, Default = CFG.borderThickness },
+				Step = 1,
+				Callback = function(v) applyBorderThickness(v) end,
+			})
+		end,
+		borderSpeed = function(host)
+			host:Slider({
+				Title = "流动速度",
+				Value = { Min = 0, Max = 3, Default = CFG.borderSpeed },
+				Step = 0.1,
+				Callback = function(v)
+					CFG.borderSpeed = v
+					refreshBorderSpeeds()
+				end,
+			})
+		end,
+		reset = function(host)
+			host:Button({
+				Title = "重置全部", Desc = "恢复出厂值",
+				Icon = "rotate-ccw", IconThemed = true,
+				Callback = resetAllSettings,
+			})
+		end,
+		print = function(host)
+			host:Button({
+				Title = "打印配置", Desc = "输出到控制台",
+				Icon = "terminal", IconThemed = true,
+				Callback = function() aa.PrintTetraxConfig() end,
+			})
+		end,
+		close = function(host)
+			host:Button({
+				Title = "关闭窗口", Desc = "收起为悬浮按钮",
+				Icon = "minus", IconThemed = true,
+				Color = C(T.danger),
+				Callback = function() pcall(function() win:Close() end) end,
+			})
+		end,
+	}
+	STATE.settingsBuilders = builders
+
+	-- 渲染：内置项两个一队塞进 HStack（横向并排），Section 之类独占一行
+	local list = STATE.settings or DEFAULT_SETTINGS
+	local pending = {}
+
+	local function flush()
+		if #pending == 0 then return end
+		if #pending == 1 then
+			pending[1](tab)
+		else
+			local hs = tab:HStack({})
+			for _, fn in ipairs(pending) do fn(hs) end
+		end
+		pending = {}
+	end
+
+	for _, item in ipairs(list) do
+		if type(item) == "string" then
+			local b = builders[item]
+			if b then
+				pending[#pending + 1] = b
+				if #pending >= 2 then flush() end
+			end
+		elseif type(item) == "table" and item.Element then
+			local el = item.Element
+			if el == "Section" or el == "Paragraph" or el == "Divider" or el == "Code" then
+				flush()
+				tab[el](tab, item)
+			else
+				local it = item
+				pending[#pending + 1] = function(host) host[el](host, it) end
+				if #pending >= 2 then flush() end
+			end
+		end
+	end
+	flush()
+
+	tab:Divider()
+	tab:Paragraph({
+		Title = "提示",
+		Desc = (STATE.tabsMeta and STATE.tabsMeta.settingsHint)
+			or "顶栏三个图标分别是：设置、通缉列表、缩小。这一页不在侧边栏显示，只通过顶栏图标进入。",
+	})
+
+	return tab
+end
+
+-- =====================  I. 通缉 Tab（原生元素 · 两列） =====================
+local function buildWantedTab(win)
+	local tab = createHiddenTab(win, {
+		Title = (STATE.tabsMeta and STATE.tabsMeta.wantedTitle) or "通缉",
+		Icon = (STATE.tabsMeta and STATE.tabsMeta.wantedIcon) or "list",
+		IconThemed = true,
+		ShowTabTitle = true,
+	})
+
+	local WANTED = {}
+	STATE.wanted = WANTED
+	win.TetraxWanted = WANTED
+
+	local function flagged()
 		local n = 0
 		for _ in pairs(WANTED) do n = n + 1 end
 		return n
 	end
 
+	local function fmtTime(s)
+		s = math.max(0, math.floor(s))
+		local h = math.floor(s / 3600)
+		local m = math.floor((s % 3600) / 60)
+		local ss = s % 60
+		if h > 0 then return string.format("%d:%02d:%02d", h, m, ss) end
+		return string.format("%02d:%02d", m, ss)
+	end
+
 	local function statValue(key)
-		if key == "targets" then return #__PLR:GetPlayers()
-		elseif key == "flagged" then return flaggedCount()
-		elseif key == "online" then return #__PLR:GetPlayers()
-		elseif key == "fps" then return FPS
-		elseif key == "uptime" then return fmtTime(tick() - START)
+		local custom = STATS.Values and STATS.Values[key]
+		if custom then
+			local ok, v = pcall(custom)
+			return ok and tostring(v) or "!"
+		end
+		if key == "targets" or key == "online" then
+			return #__PLR:GetPlayers()
+		elseif key == "flagged" then
+			return flagged()
+		elseif key == "fps" then
+			return math.floor(STATE.fps)
+		elseif key == "uptime" then
+			return fmtTime(tick() - STATE.start)
 		elseif key == "alive" then
 			local n = 0
 			for _, p in ipairs(__PLR:GetPlayers()) do
 				local c = p.Character
-				if c and c:FindFirstChildOfClass("Humanoid") and c:FindFirstChildOfClass("Humanoid").Health > 0 then
-					n = n + 1
-				end
+				local h = c and c:FindFirstChildOfClass("Humanoid")
+				if h and h.Health > 0 then n = n + 1 end
 			end
 			return n
 		end
 		return "-"
 	end
 
+	local statPara = tab:Paragraph({ Title = "统计", Desc = "读取中…" })
+
 	local function refreshStats()
-		if not statLbl then return end
 		local parts = {}
 		for _, key in ipairs(STATS.Fields) do
-			local label = STATS.Labels[key] or key
-			parts[#parts + 1] = label .. " " .. tostring(statValue(key))
+			parts[#parts + 1] = (STATS.Labels[key] or key) .. "  " .. tostring(statValue(key))
 		end
-		statLbl.Text = STATS.Prefix .. table.concat(parts, STATS.Separator) .. STATS.Suffix
+		local text = STATS.Prefix .. table.concat(parts, STATS.Separator) .. STATS.Suffix
+		pcall(function() statPara:SetDesc(text) end)
 	end
+	STATE.refreshStats = refreshStats
 
-	-- 统计栏
-	if STATS.Enabled then
-		order = order + 1
-		statRow = mk("Frame", {
-			Size = UDim2.new(1, 0, 0, 34),
-			BackgroundColor3 = CLR.row,
-			BackgroundTransparency = 0.35,
-			BorderSizePixel = 0,
-			LayoutOrder = order,
-		}, shell.scroll)
-		corner(statRow, UDim.new(0, 8))
-		statLbl = UI.text(statRow, "", 12, CLR.accent)
-		statLbl.Size = UDim2.new(1, -20, 1, 0)
-		statLbl.Position = UDim2.new(0, 10, 0, 0)
-	end
+	local sec = tab:Section({ Title = "通缉名单", Desc = "开关即标记", Opened = true })
 
-	order = order + 1
-	sectionLabel(shell.scroll, "通缉名单（开关 = 标记该玩家）", order)
-
+	local rows = {}
 	local function rebuild()
-		for _, r in ipairs(itemRows) do pcall(function() r:Destroy() end) end
-		itemRows = {}
-
-		local function addRow(text, name, initial)
-			order = order + 1
-			local r = UI.row(shell.scroll, 30)
-			r.LayoutOrder = order
-			local t = UI.text(r, text, 12, CLR.text)
-			t.Size = UDim2.new(1, -58, 1, 0)
-			t.Position = UDim2.new(0, 0, 0, 0)
-			if name then
-				UI.toggle(r, initial, function(on)
-					WANTED[name] = on or nil
-					refreshStats()
-				end)
-			end
-			itemRows[#itemRows + 1] = r
-		end
+		for _, r in ipairs(rows) do pcall(function() r:Destroy() end) end
+		rows = {}
 
 		local plrs = __PLR:GetPlayers()
 		if #plrs == 0 then
-			addRow("（房间里暂时没有玩家）", nil)
+			rows[#rows + 1] = sec:Paragraph({
+				Title = "房间里暂时没有玩家",
+				Desc = "有玩家加入会自动刷新",
+			})
 		else
-			for _, p in ipairs(plrs) do
-				addRow(p.Name .. (p == __PLR.LocalPlayer and "  (你)" or ""), p.Name, WANTED[p.Name])
+			-- 两列排布，玩家多时更紧凑
+			local i = 0
+			while i < #plrs do
+				local line = sec:HStack({})
+				for k = 1, 2 do
+					local p = plrs[i + k]
+					if p then
+						local you = (p == __PLR.LocalPlayer) and "（你）" or ""
+						line:Toggle({
+							Title = p.Name .. you,
+							Desc = "UserId " .. tostring(p.UserId),
+							Value = WANTED[p.Name] and true or false,
+							Callback = function(on)
+								WANTED[p.Name] = on and true or nil
+								refreshStats()
+							end,
+						})
+					end
+				end
+				rows[#rows + 1] = line
+				i = i + 2
 			end
 		end
 		refreshStats()
 	end
 
-	shell.onShow = rebuild
+	rebuild()
 
-	-- 玩家进出自动刷新
 	__PLR.PlayerAdded:Connect(function()
-		if shell.frame.Visible then rebuild() end
+		if tab.Selected then task.spawn(rebuild) end
 	end)
 	__PLR.PlayerRemoving:Connect(function(p)
 		WANTED[p.Name] = nil
-		if shell.frame.Visible then rebuild() end
+		if tab.Selected then task.spawn(rebuild) end
 	end)
 
-	-- 统计定时刷新（FPS / 在线数）
 	task.spawn(function()
 		while true do
-			task.wait(1)
-			if shell.frame.Visible then refreshStats() end
+			task.wait(math.max(0.2, (STATS.RefreshMs or 1000) / 1000))
+			if tab.Selected then refreshStats() end
 		end
 	end)
+
+	tab:Divider()
+	tab:Paragraph({
+		Title = "说明",
+		Desc = "标记结果保存在 WindUI:GetWantedList()，形如 { [玩家名] = true }，可在脚本里直接读取。",
+	})
+
+	return tab
 end
 
--- ======================= 应用到窗口 =======================
+-- =====================  J. 标题栏 / OpenButton 美化 =====================
+local function beautifyTopbar(win)
+	local main = win.UIElements.Main:FindFirstChild("Main")
+	local topbar = main and main:FindFirstChild("Topbar")
+	if not topbar then return end
+
+	mk("Frame", {
+		Size = UDim2.new(1, -24, 0, 1),
+		Position = UDim2.new(0, 12, 1, -1),
+		BackgroundColor3 = C(T.strokeSoft),
+		BackgroundTransparency = 0.35,
+		BorderSizePixel = 0,
+		ZIndex = 96,
+	}, topbar)
+
+	for _, d in ipairs(topbar:GetDescendants()) do
+		if d:IsA("TextLabel") then
+			if d.TextSize >= 16 then
+				pcall(function() d.FontFace = Font.new(CFG.font, Enum.FontWeight.Bold) end)
+			else
+				pcall(function() d.TextColor3 = C(T.textFaint) end)
+			end
+		end
+	end
+end
+
+local function beautifyOpenButton(win)
+	local ob = win.OpenButtonMain
+	if not (ob and ob.Button) then return end
+
+	pcall(function()
+		win:EditOpenButton({
+			Title = "tetrax v5",
+			Color = seqOf((BORDERS[CFG.borderStyle] or BORDERS[1]).seq),
+			CornerRadius = UDim.new(1, 0),
+			StrokeThickness = 2,
+		})
+	end)
+
+	for _, d in ipairs(ob.Button:GetDescendants()) do
+		if d:IsA("UIStroke") then
+			local g = d:FindFirstChildOfClass("UIGradient")
+			if g then registerBorder(d, g, CFG.borderStyle, true) end
+		end
+	end
+end
+
+-- =====================  K. 窗口增强 =====================
 local function EnhanceWindow(win)
 	if not win or not win.UIElements then return end
 	local main = win.UIElements.Main
 	if not main then return end
-	main:WaitForChild("Main", 10)
+	if not main:FindFirstChild("Main") and not main:WaitForChild("Main", 10) then
+		return
+	end
 
-	-- 字体根登记
-	FONT_ROOTS[#FONT_ROOTS + 1] = main
+	STATE.win = win
+	aa.ActiveWindow = win
+	trackFonts(main)
 
-	-- ---------- 1. 干掉自带的 全屏 / 关闭 按钮 ----------
+	-- 1. 移除自带的 全屏 / 关闭 按钮
 	local tb = win.TopBarButtons
-	local function killTopbar(order)
+	local function kill(order)
 		local rec = tb and tb[100 - order]
 		if rec and rec.Object then pcall(function() rec.Object:Destroy() end) end
 		if tb then tb[100 - order] = nil end
 	end
-	killTopbar(997)
-	killTopbar(998)
-	killTopbar(999)
+	kill(997) kill(998) kill(999)
 
-	-- ---------- 2. 窗口流动边框 ----------
-	local stroke = attachBorder(main, CFG.borderStyle)
-	stroke.Enabled = CFG.border
+	-- 2. 窗口流动边框
+	local bs = strokeOn(main, Color3.new(1, 1, 1), CFG.borderThickness, 0)
+	bs.LineJoinMode = Enum.LineJoinMode.Round
+	bs.Enabled = CFG.border
+	local bg = mk("UIGradient", {
+		Color = seqOf((BORDERS[CFG.borderStyle] or BORDERS[1]).seq),
+	}, bs)
+	registerBorder(bs, bg, CFG.borderStyle, false)
 
-	-- ---------- 3. OpenButton：跟随边框样式 + 流动 ----------
-	do
-		local ob = win.OpenButtonMain
-		if ob and ob.Button then
-			pcall(function()
-				win:EditOpenButton({
-					Title = "tetrax v2",
-					Color = seqFrom((BORDERS[CFG.borderStyle] or BORDERS[1]).seq),
-					CornerRadius = UDim.new(1, 0),
-					StrokeThickness = 2,
-				})
-			end)
-			for _, d in ipairs(ob.Button:GetDescendants()) do
-				if d:IsA("UIStroke") then
-					local g = d:FindFirstChildOfClass("UIGradient")
-					if g then
-						table.insert(BORDER_TARGETS, {
-							stroke = d, grad = g, idx = CFG.borderStyle, isOpenBtn = true,
-						})
-					end
-				end
-			end
-		end
+	-- 3. OpenButton / 标题栏
+	beautifyOpenButton(win)
+	beautifyTopbar(win)
+
+	-- 4. 两个隐藏入口的 Tab（可用 ConfigureTetrax 关掉其中一个）
+	local tm = STATE.tabsMeta or {}
+	local settingsTab = (tm.showSettings ~= false) and buildSettingsTab(win) or nil
+	local wantedTab = (tm.showWanted ~= false) and buildWantedTab(win) or nil
+	STATE.tabs = { settings = settingsTab, wanted = wantedTab }
+
+	-- 5. 顶栏三个图标
+	if settingsTab then
+		win.Topbar:Button({
+			Name = "Settings",
+			Icon = (STATE.tabsMeta and STATE.tabsMeta.settingsIcon) or "settings",
+			LayoutOrder = 997,
+			Callback = function() settingsTab:Select() end,
+		})
 	end
-
-	-- ---------- 4. 两个浮层面板 ----------
-	PANELS.settings = makeShell(win, "设置  ·  SETTINGS", "Settings")
-	PANELS.wanted   = makeShell(win, "通缉列表  ·  WANTED", "Wanted")
-	buildSettings(win, PANELS.settings)
-	buildWanted(win, PANELS.wanted)
-
-	-- ---------- 5. 三个顶栏按钮 ----------
+	if wantedTab then
+		win.Topbar:Button({
+			Name = "Wanted",
+			Icon = (STATE.tabsMeta and STATE.tabsMeta.wantedIcon) or "list",
+			LayoutOrder = 998,
+			Callback = function() wantedTab:Select() end,
+		})
+	end
 	win.Topbar:Button({
-		Name = "Settings",
-		Icon = "settings",
-		LayoutOrder = 997,
-		Callback = function() PANELS.settings:toggle() end,
-	})
-	win.Topbar:Button({
-		Name = "Wanted",
-		Icon = "list",
-		LayoutOrder = 998,
-		Callback = function() PANELS.wanted:toggle() end,
-	})
-	win.Topbar:Button({
-		Name = "Minimize",
-		Icon = "minus",
-		LayoutOrder = 999,
+		Name = "Minimize", Icon = "minus", LayoutOrder = 999,
 		Callback = function() pcall(function() win:Close() end) end,
 	})
 
-	-- ---------- 6. 对外入口（二次开发用） ----------
-	win.TetraxPanels  = PANELS
-	win.TetraxConfig  = CFG
+	-- 6. 兼容入口
+	win.TetraxTabs = STATE.tabs
+	win.TetraxConfig = CFG
+	win.TetraxStats = STATS
 	win.TetraxBorders = BORDERS
-	win.TetraxStats   = STATS
 end
 
--- ======================= 主题：Tetrax 深黑 =======================
+-- =====================  L. 主题 =====================
 local function applyTheme()
 	local dk = __W.Themes and __W.Themes.Dark
-	if dk then
-		dk.Accent      = Color3.fromHex("18181B")
-		dk.Dialog      = Color3.fromHex("141417")
-		dk.Outline     = Color3.fromHex("FFFFFF")
-		dk.Text        = Color3.fromHex("FFFFFF")
-		dk.Placeholder = Color3.fromHex("8A8A93")
-		dk.Background  = Color3.fromHex("0A0A0C")
-		dk.Button      = Color3.fromHex("3F3F46")
-		dk.Icon        = Color3.fromHex("B4B4BC")
-		dk.Toggle      = Color3.fromHex("3AD1C8")
-		dk.Slider      = Color3.fromHex("3AD1C8")
-		dk.Checkbox    = Color3.fromHex("3AD1C8")
-		dk.Primary     = Color3.fromHex("3AD1C8")
-		dk.SliderIcon  = Color3.fromHex("8A8A93")
-		dk.PanelBackground = Color3.fromHex("FFFFFF")
-		dk.PanelBackgroundTransparency = 0.96
-		dk.LabelBackground = Color3.fromHex("000000")
-		dk.LabelBackgroundTransparency = 0.85
-		dk.ElementBackground = Color3.fromHex("1B1B20")
-		dk.ElementBackgroundTransparency = 0
-	end
-
-	pcall(function()
-		__W:AddTheme({
-			Name = "Tetrax",
-			Accent = Color3.fromHex("18181B"),
-			Dialog = Color3.fromHex("141417"),
-			Outline = Color3.fromHex("FFFFFF"),
-			Text = Color3.fromHex("FFFFFF"),
-			Placeholder = Color3.fromHex("8A8A93"),
-			Background = Color3.fromHex("0A0A0C"),
-			Button = Color3.fromHex("3F3F46"),
-			Icon = Color3.fromHex("B4B4BC"),
-			Toggle = Color3.fromHex("3AD1C8"),
-			Slider = Color3.fromHex("3AD1C8"),
-			Checkbox = Color3.fromHex("3AD1C8"),
-			Primary = Color3.fromHex("3AD1C8"),
-			SliderIcon = Color3.fromHex("8A8A93"),
-			PanelBackground = Color3.fromHex("FFFFFF"),
-			PanelBackgroundTransparency = 0.96,
-			LabelBackground = Color3.fromHex("000000"),
-			LabelBackgroundTransparency = 0.85,
-			ElementBackground = Color3.fromHex("1B1B20"),
-			ElementBackgroundTransparency = 0,
-		})
-	end)
+	if not dk then return end
+	dk.Accent      = C("#18181B")
+	dk.Dialog      = C("#131318")
+	dk.Outline     = C("#FFFFFF")
+	dk.Text        = C("#FFFFFF")
+	dk.Placeholder = C(T.textDim)
+	dk.Background  = C(T.bg)
+	dk.Button      = C("#3F3F46")
+	dk.Icon        = C("#B4B4BC")
+	dk.Toggle      = C(T.accent)
+	dk.Slider      = C(T.accent)
+	dk.Checkbox    = C(T.accent)
+	dk.Primary     = C(T.accent)
+	dk.SliderIcon  = C(T.textDim)
+	dk.PanelBackground = C("#FFFFFF")
+	dk.PanelBackgroundTransparency = 0.96
+	dk.LabelBackground = C("#000000")
+	dk.LabelBackgroundTransparency = 0.85
+	dk.ElementBackground = C("#1B1B20")
+	dk.ElementBackgroundTransparency = 0
 end
 
 applyTheme()
 
--- ======================= HOOOK CreateWindow =======================
+-- =====================  M. 对外 API =====================
+-- 注册方式与 WindUI 原生一致：函数挂在 WindUI 表上，冒号调用
+--     WindUI:SetBorderStyle("彩虹")
+--     WindUI:SetAccentColor(2)
+
+-- 归一化：接受名字或索引
+local function resolve(list, v)
+	if type(v) == "number" then return clamp(v, 1, #list) end
+	return indexOfName(list, v)
+end
+
+function aa.SetBorderEnabled(self, value)
+	setBordersEnabled(value and true or false)
+	return CFG.border
+end
+
+function aa.ToggleBorder(self)
+	setBordersEnabled(not CFG.border)
+	return CFG.border
+end
+
+function aa.SetBorderStyle(self, value)
+	applyBorderStyle(resolve(BORDERS, value))
+	return BORDERS[CFG.borderStyle].name
+end
+
+function aa.SetBorderThickness(self, value)
+	applyBorderThickness(math.clamp(tonumber(value) or 3, 1, 8))
+	return CFG.borderThickness
+end
+
+function aa.SetBorderSpeed(self, value)
+	CFG.borderSpeed = math.max(0, tonumber(value) or 1)
+	refreshBorderSpeeds()
+	return CFG.borderSpeed
+end
+
+function aa.SetBorder(self, style, thickness, speed, enabled)
+	if style ~= nil then applyBorderStyle(resolve(BORDERS, style)) end
+	if thickness ~= nil then applyBorderThickness(math.clamp(tonumber(thickness) or 3, 1, 8)) end
+	if speed ~= nil then aa.SetBorderSpeed(self, speed) end
+	if enabled ~= nil then setBordersEnabled(enabled and true or false) end
+	return aa.GetBorder(self)
+end
+
+function aa.GetBorder(self)
+	return {
+		enabled   = CFG.border,
+		style     = BORDERS[CFG.borderStyle].name,
+		styleIndex = CFG.borderStyle,
+		thickness = CFG.borderThickness,
+		speed     = CFG.borderSpeed,
+	}
+end
+
+function aa.GetBorderStyles(self)
+	local out = {}
+	for i, b in ipairs(BORDERS) do
+		out[i] = { index = i, name = b.name, speed = b.speed }
+	end
+	return out
+end
+
+function aa.SetAccentColor(self, value)
+	applyAccent(resolve(ACCENTS, value))
+	return ACCENTS[CFG.accent].name
+end
+
+function aa.GetAccentColors(self)
+	local out = {}
+	for i, a in ipairs(ACCENTS) do
+		out[i] = { index = i, name = a.name, hex = a.hex }
+	end
+	return out
+end
+
+function aa.SetDPI(self, value)
+	applyDPI(math.clamp(tonumber(value) or 1, 0.6, 1.6))
+	return CFG.dpi
+end
+
+function aa.GetDPI(self)
+	return CFG.dpi
+end
+
+function aa.SetTetraxFont(self, value)
+	if type(value) == "number" then value = FONTS[clamp(value, 1, #FONTS)].fam end
+	CFG.font = value
+	applyFont(value)
+	return CFG.font
+end
+
+function aa.GetTetraxFonts(self)
+	local out = {}
+	for i, f in ipairs(FONTS) do out[i] = { index = i, name = f.name, family = f.fam } end
+	return out
+end
+
+function aa.GetWantedList(self)
+	local out = {}
+	for k, v in pairs(STATE.wanted or {}) do out[k] = v end
+	return out
+end
+
+function aa.IsWanted(self, name)
+	return (STATE.wanted or {})[name] and true or false
+end
+
+function aa.SetWanted(self, name, on)
+	STATE.wanted = STATE.wanted or {}
+	STATE.wanted[name] = on and true or nil
+	if STATE.refreshStats then task.spawn(STATE.refreshStats) end
+	return STATE.wanted[name] and true or false
+end
+
+function aa.ClearWanted(self)
+	STATE.wanted = {}
+	if STATE.refreshStats then task.spawn(STATE.refreshStats) end
+end
+
+function aa.OpenSettingsTab(self)
+	if STATE.tabs and STATE.tabs.settings then STATE.tabs.settings:Select() end
+end
+
+function aa.OpenWantedTab(self)
+	if STATE.tabs and STATE.tabs.wanted then STATE.tabs.wanted:Select() end
+end
+
+function aa.MinimizeWindow(self)
+	if aa.ActiveWindow then pcall(function() aa.ActiveWindow:Close() end) end
+end
+
+function aa.GetTetraxConfig(self)
+	return CFG
+end
+
+function aa.PrintTetraxConfig(self)
+	local c = aa.GetBorder(self)
+	print(table.concat({
+		"[Tetrax]",
+		"dpi=" .. tostring(CFG.dpi),
+		"font=" .. CFG.font,
+		"accent=" .. ACCENTS[CFG.accent].name,
+		"border=" .. tostring(c.enabled),
+		"style=" .. c.style,
+		"thickness=" .. tostring(c.thickness),
+		"speed=" .. tostring(c.speed),
+	}, "  |  "))
+end
+
+-- 一次性配置：请在 CreateWindow 之前调用
+function aa.ConfigureTetrax(self, cfg)
+	if type(cfg) ~= "table" then return false end
+
+	-- 默认值
+	local d = cfg.Defaults
+	if type(d) == "table" then
+		if d.DPI then CFG.dpi = clamp(tonumber(d.DPI) or 1, 0.6, 1.6) end
+		if d.Font then CFG.font = d.Font end
+		if d.Accent then CFG.accent = resolve(ACCENTS, d.Accent) end
+		if d.Border ~= nil then CFG.border = d.Border and true or false end
+		if d.BorderStyle then CFG.borderStyle = resolve(BORDERS, d.BorderStyle) end
+		if d.BorderThickness then CFG.borderThickness = clamp(tonumber(d.BorderThickness) or 3, 1, 8) end
+		if d.BorderSpeed then CFG.borderSpeed = math.max(0, tonumber(d.BorderSpeed) or 1) end
+	end
+
+	-- 追加预设（name + seq 即可）
+	if type(cfg.Borders) == "table" then
+		for _, b in ipairs(cfg.Borders) do
+			if type(b) == "table" and b.name and b.seq then
+				BORDERS[#BORDERS + 1] = { name = b.name, speed = b.speed or 1, seq = b.seq }
+			end
+		end
+	end
+	if type(cfg.Fonts) == "table" then
+		for _, f in ipairs(cfg.Fonts) do
+			if type(f) == "table" and f.name and f.fam then FONTS[#FONTS + 1] = f end
+		end
+	end
+	if type(cfg.Accents) == "table" then
+		for _, a in ipairs(cfg.Accents) do
+			if type(a) == "table" and a.name and a.hex then ACCENTS[#ACCENTS + 1] = a end
+		end
+	end
+
+	-- 统计
+	local st = cfg.Stats
+	if type(st) == "table" then
+		if st.Enabled ~= nil then STATS.Enabled = st.Enabled and true or false end
+		if type(st.Fields) == "table" then STATS.Fields = st.Fields end
+		if type(st.Labels) == "table" then
+			for k, v in pairs(st.Labels) do STATS.Labels[k] = v end
+		end
+		if st.Separator ~= nil then STATS.Separator = st.Separator end
+		if st.Prefix ~= nil then STATS.Prefix = st.Prefix end
+		if st.Suffix ~= nil then STATS.Suffix = st.Suffix end
+		if st.RefreshMs then STATS.RefreshMs = st.RefreshMs end
+		if type(st.Values) == "table" then
+			STATS.Values = STATS.Values or {}
+			for k, v in pairs(st.Values) do STATS.Values[k] = v end
+		end
+	end
+
+	-- 设置页显示哪些项
+	if type(cfg.Settings) == "table" then STATE.settings = cfg.Settings end
+
+	-- 两个 Tab 的标题 / 图标 / 是否创建
+	if type(cfg.Tabs) == "table" then
+		STATE.tabsMeta = STATE.tabsMeta or {}
+		local tm = STATE.tabsMeta
+		if cfg.Tabs.SettingsTitle then tm.settingsTitle = cfg.Tabs.SettingsTitle end
+		if cfg.Tabs.SettingsIcon then tm.settingsIcon = cfg.Tabs.SettingsIcon end
+		if cfg.Tabs.SettingsHint then tm.settingsHint = cfg.Tabs.SettingsHint end
+		if cfg.Tabs.WantedTitle then tm.wantedTitle = cfg.Tabs.WantedTitle end
+		if cfg.Tabs.WantedIcon then tm.wantedIcon = cfg.Tabs.WantedIcon end
+		if cfg.Tabs.ShowSettings ~= nil then tm.showSettings = cfg.Tabs.ShowSettings and true or false end
+		if cfg.Tabs.ShowWanted ~= nil then tm.showWanted = cfg.Tabs.ShowWanted and true or false end
+	end
+
+	if STATE.win then
+		warn("[Tetrax] ConfigureTetrax 在窗口创建之后调用：数值类改动仍生效，但设置页的结构不会重建。建议放在 CreateWindow 之前。")
+	end
+	return true
+end
+
+-- 取一份可编辑的默认配置
+function aa.GetDefaultTetraxConfig(self)
+	local bl, fl, al = {}, {}, {}
+	for i, b in ipairs(BORDERS) do bl[i] = b.name end
+	for i, f in ipairs(FONTS) do fl[i] = f.name end
+	for i, a in ipairs(ACCENTS) do al[i] = a.name end
+
+	return {
+		Defaults = {
+			DPI = CFG.dpi,
+			Font = CFG.font,
+			Accent = ACCENTS[CFG.accent].name,
+			Border = CFG.border,
+			BorderStyle = BORDERS[CFG.borderStyle].name,
+			BorderThickness = CFG.borderThickness,
+			BorderSpeed = CFG.borderSpeed,
+		},
+		Borders = bl,
+		Fonts = fl,
+		Accents = al,
+		Stats = {
+			Enabled = STATS.Enabled,
+			Fields = STATS.Fields,
+			Separator = STATS.Separator,
+			Prefix = STATS.Prefix,
+			Suffix = STATS.Suffix,
+			Labels = STATS.Labels,
+			RefreshMs = STATS.RefreshMs,
+			Values = STATS.Values,
+		},
+		Settings = STATE.settings or DEFAULT_SETTINGS,
+	}
+end
+
+aa.Tetrax = {
+	Version = "5.0",
+	SetBorder = aa.SetBorder,
+	GetBorder = aa.GetBorder,
+	SetBorderStyle = aa.SetBorderStyle,
+	SetBorderThickness = aa.SetBorderThickness,
+	SetBorderSpeed = aa.SetBorderSpeed,
+	SetBorderEnabled = aa.SetBorderEnabled,
+	ToggleBorder = aa.ToggleBorder,
+	GetBorderStyles = aa.GetBorderStyles,
+	SetAccentColor = aa.SetAccentColor,
+	GetAccentColors = aa.GetAccentColors,
+	ConfigureTetrax = aa.ConfigureTetrax,
+	GetDefaultTetraxConfig = aa.GetDefaultTetraxConfig,
+	SetDPI = aa.SetDPI,
+	GetDPI = aa.GetDPI,
+	SetTetraxFont = aa.SetTetraxFont,
+	GetTetraxFonts = aa.GetTetraxFonts,
+	GetWantedList = aa.GetWantedList,
+	SetWanted = aa.SetWanted,
+	IsWanted = aa.IsWanted,
+	ClearWanted = aa.ClearWanted,
+	OpenSettingsTab = aa.OpenSettingsTab,
+	OpenWantedTab = aa.OpenWantedTab,
+	MinimizeWindow = aa.MinimizeWindow,
+	PrintConfig = aa.PrintTetraxConfig,
+}
+
+-- =====================  N. HOOK =====================
 local __origCreateWindow = __W.CreateWindow
 
-local function __patchedCreateWindow(a, b)
+__W.CreateWindow = function(a, b)
 	local win
 	if type(a) == "table" and a.CreateWindow then
 		win = __origCreateWindow(a, b)
@@ -40926,21 +41086,15 @@ local function __patchedCreateWindow(a, b)
 	end
 	task.spawn(function()
 		local ok, err = pcall(EnhanceWindow, win)
-		if not ok then
-			warn("[Tetrax] 增强失败: " .. tostring(err))
-		end
+		if not ok then warn("[Tetrax] 增强失败: " .. tostring(err)) end
 	end)
 	return win
 end
 
-__W.CreateWindow = __patchedCreateWindow
-__W.__Tetrax = {
-	config = CFG,
-	stats = STATS,
-	borders = BORDERS,
-	colors = CLR,
-	enhance = EnhanceWindow,
-}
+__W.__Tetrax = aa.Tetrax
+__W.__Tetrax.config = CFG
+__W.__Tetrax.stats = STATS
+__W.__Tetrax.state = STATE
 
 return __W
 end
